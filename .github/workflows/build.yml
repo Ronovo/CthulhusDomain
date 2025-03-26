@@ -1,0 +1,98 @@
+name: Build Game
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.8'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install Pillow
+        pip install pyinstaller
+        pip install pygame
+    
+    - name: Build Windows executable
+      run: |
+        cd Install_Files
+        python setup_fonts.py
+        python icon.py
+        pyinstaller --clean build.spec
+    
+    - name: Upload Windows artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: CthulhusDominion-Windows
+        path: Install_Files/dist/CthulhusDominion.exe
+
+  build-mac:
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.8'
+    
+    - name: Install dependencies
+      run: |
+        python3 -m pip install --upgrade pip
+        pip3 install Pillow
+        pip3 install pyinstaller
+        pip3 install pygame
+    
+    - name: Build Mac DMG
+      run: |
+        cd Install_Files
+        python3 setup_fonts.py
+        python3 icon.py
+        pyinstaller --clean build.spec
+        hdiutil create -volname "Cthulhu's Dominion" -srcfolder "dist/CthulhusDominion.app" -ov -format UDZO "dist/CthulhusDominion.dmg"
+    
+    - name: Upload Mac artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: CthulhusDominion-Mac
+        path: Install_Files/dist/CthulhusDominion.dmg
+
+  create-release:
+    needs: [build-windows, build-mac]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+    - name: Download Windows artifact
+      uses: actions/download-artifact@v3
+      with:
+        name: CthulhusDominion-Windows
+        path: dist
+    
+    - name: Download Mac artifact
+      uses: actions/download-artifact@v3
+      with:
+        name: CthulhusDominion-Mac
+        path: dist
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          dist/CthulhusDominion.exe
+          dist/CthulhusDominion.dmg
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
