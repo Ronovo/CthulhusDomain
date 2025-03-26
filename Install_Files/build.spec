@@ -49,9 +49,25 @@ if os.name == 'nt':
         icon='icon.ico'
     )
 else:
-    app = BUNDLE(
+    exe = EXE(
         pyz,
         a.scripts,
+        [],
+        exclude_binaries=True,
+        name='CthulhusDominion',
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=True,
+        console=False,
+        argv_emulation=True,
+        target_arch=None,
+        codesign_identity=None,
+        entitlements_file=None,
+    )
+
+    app = BUNDLE(
+        exe,
         a.binaries,
         a.zipfiles,
         a.datas,
