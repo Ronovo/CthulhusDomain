@@ -32,6 +32,10 @@ jobs:
     - name: Build Windows executable
       run: |
         cd Install_Files
+        # Copy game files
+        copy ..\Game_Logic\main.py .
+        copy ..\Game_Logic\upgrades.py .
+        copy ..\Game_Logic\menu.py .
         python setup_fonts.py
         python icon.py
         pyinstaller --clean ./build.spec
@@ -62,6 +66,10 @@ jobs:
     - name: Build Mac DMG
       run: |
         cd Install_Files
+        # Copy game files
+        cp ../Game_Logic/main.py .
+        cp ../Game_Logic/upgrades.py .
+        cp ../Game_Logic/menu.py .
         python3 setup_fonts.py
         python3 icon.py
         pyinstaller --clean ./build.spec
