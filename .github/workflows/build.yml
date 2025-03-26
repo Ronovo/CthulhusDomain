@@ -34,7 +34,7 @@ jobs:
         cd Install_Files
         python setup_fonts.py
         python icon.py
-        pyinstaller --clean build.spec
+        pyinstaller --clean ./build.spec
     
     - name: Upload Windows artifact
       uses: actions/upload-artifact@v4
@@ -64,7 +64,7 @@ jobs:
         cd Install_Files
         python3 setup_fonts.py
         python3 icon.py
-        pyinstaller --clean build.spec
+        pyinstaller --clean ./build.spec
         hdiutil create -volname "Cthulhu's Dominion" -srcfolder "dist/CthulhusDominion.app" -ov -format UDZO "dist/CthulhusDominion.dmg"
     
     - name: Upload Mac artifact
