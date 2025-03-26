@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [ main ]
 
+# Add permissions for artifact uploads
+permissions:
+  contents: write
+  packages: write
+
 jobs:
   build-windows:
     runs-on: windows-latest
