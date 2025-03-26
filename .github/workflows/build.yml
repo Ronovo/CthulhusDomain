@@ -73,7 +73,12 @@ jobs:
         python3 setup_fonts.py
         python3 icon.py
         pyinstaller --clean ./build.spec
-        hdiutil create -volname "Cthulhu's Dominion" -srcfolder "dist/CthulhusDominion.app" -ov -format UDZO "dist/CthulhusDominion.dmg"
+        
+        # Create DMG
+        mkdir -p dmg_temp
+        cp -r dist/CthulhusDominion.app dmg_temp/
+        hdiutil create -volname "Cthulhu's Dominion" -srcfolder dmg_temp -ov -format UDZO "dist/CthulhusDominion.dmg"
+        rm -rf dmg_temp
     
     - name: Upload Mac artifact
       uses: actions/upload-artifact@v4
