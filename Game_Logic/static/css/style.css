@@ -602,6 +602,154 @@ select {
     color: var(--muted);
 }
 
+.small-button {
+    padding: 2px 12px;
+    background: none;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-size: 20px;
+}
+
+.small-button:hover,
+.small-button:focus-visible {
+    background: linear-gradient(var(--good), var(--btn-end));
+    color: var(--text);
+    text-shadow: 0 0 3px #000;
+    outline: none;
+}
+
+/* Accounts */
+
+.account-name {
+    color: var(--accent);
+}
+
+.login-warning {
+    max-width: 640px;
+    padding: 12px 16px;
+    border: 2px solid var(--bad);
+    font-size: 20px;
+}
+
+.login-input {
+    width: min(100%, 12em);
+    padding: 4px 8px;
+    background: none;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+    font: inherit;
+    font-size: 32px;
+    text-align: center;
+}
+
+.login-input:focus {
+    outline: none;
+    border-bottom-color: var(--accent);
+}
+
+.login-note {
+    max-width: 640px;
+    color: var(--muted);
+    font-size: 18px;
+}
+
+/* Ending */
+
+.ending-text {
+    font-size: 32px;
+}
+
+.ending-hint {
+    margin-top: -12px;
+    color: var(--muted);
+    font-size: 20px;
+}
+
+/* Achievements */
+
+.achievement-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: min(100%, 640px);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    text-align: left;
+}
+
+.achievement {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 12px 16px;
+    background: var(--locked);
+    border: 1px solid var(--muted);
+    color: var(--muted);
+}
+
+.achievement.earned {
+    background: var(--locked-ok);
+    border-color: var(--accent);
+    color: var(--text);
+}
+
+.achievement-name {
+    font-size: 26px;
+}
+
+.achievement.earned .achievement-name {
+    color: var(--accent);
+}
+
+.achievement-desc {
+    font-size: 18px;
+}
+
+.toasts {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    pointer-events: none;
+}
+
+.toast {
+    display: flex;
+    flex-direction: column;
+    max-width: calc(100vw - 32px);
+    padding: 24px 32px;
+    background: var(--surface);
+    border: 4px solid var(--accent);
+    box-shadow: 0 0 24px var(--bar-glow);
+    animation: toast-in 0.3s ease-out;
+}
+
+.toast-title {
+    color: var(--accent);
+    font-size: 32px;
+}
+
+.toast-name {
+    font-size: 44px;
+}
+
+@keyframes toast-in {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
 /* Popups */
 
 .modal {
@@ -627,27 +775,6 @@ select {
     border: 2px solid var(--border);
     text-align: center;
     font-size: 28px;
-}
-
-.choices {
-    display: flex;
-    gap: 96px;
-    margin-top: 8px;
-}
-
-.choice {
-    width: 100px;
-    height: 40px;
-    border: none;
-    text-shadow: 0 0 3px #000;
-}
-
-.choice.yes {
-    background: var(--good);
-}
-
-.choice.no {
-    background: var(--bad);
 }
 
 @media (max-width: 1100px) {
@@ -687,9 +814,5 @@ select {
     .menu-text,
     .name-input {
         font-size: 36px;
-    }
-
-    .choices {
-        gap: 40px;
     }
 }

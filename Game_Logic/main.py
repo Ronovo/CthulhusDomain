@@ -57,7 +57,8 @@ class Game:
         self.sanity = 0
         self.upgrade_manager = UpgradeManager()
         self.worlds_destroyed = 0  # Counter for worlds destroyed
-        self.show_world_end = False  # Flag for showing the world end popup
+        self.devoured_seconds = None  # Dream time when the world was devoured; None until then
+        self.endless = False  # Chose to keep feeding on the devoured world
         self.last_saved = time.time()
         self.dream_seconds = 0.0  # Time spent on the current world, including time the game was closed
 
@@ -84,6 +85,9 @@ class Game:
         self.worlds_destroyed = int(data.get("worlds_destroyed", 0))  # Load worlds destroyed count
         self.last_saved = float(data.get("last_saved", time.time()))
         self.dream_seconds = float(data.get("dream_seconds", 0.0))
+        devoured_seconds = data.get("devoured_seconds")
+        self.devoured_seconds = None if devoured_seconds is None else float(devoured_seconds)
+        self.endless = bool(data.get("endless", False))
 
         # Load resources
         for resource_name, resource_data in data.get("resources", {}).items():
@@ -109,6 +113,8 @@ class Game:
             "worlds_destroyed": self.worlds_destroyed,  # Save worlds destroyed count
             "last_saved": self.last_saved,
             "dream_seconds": self.dream_seconds,
+            "devoured_seconds": self.devoured_seconds,
+            "endless": self.endless,
             "resources": {},
             "upgrades": {}
         }
@@ -190,11 +196,22 @@ class Game:
             resource.has_manager = True
             self.sanity -= resource.manager_cost
             resource.is_processing = True
+            self.record_devoured()
 
     def buy_upgrade(self, upgrade_id: str):
         success, self.sanity = self.upgrade_manager.purchase(upgrade_id, self.sanity)
-        if success and self.check_all_upgrades_purchased():
-            self.show_world_end = True
+        if success:
+            self.record_devoured()
+
+    def record_devoured(self):
+        """Count the world and remember how long the dream took, the first time it is devoured"""
+        if self.devoured_seconds is None and self.check_world_devoured():
+            self.devoured_seconds = self.dream_seconds
+            self.worlds_destroyed += 1
+
+    def enter_endless(self):
+        if self.devoured_seconds is not None:
+            self.endless = True
 
     def next_upgrades(self) -> List[Tuple[str, Upgrade]]:
         """The next speed and next production upgrade for each unlocked resource"""
@@ -227,16 +244,17 @@ class Game:
 
         return available_upgrades
 
-    def check_all_upgrades_purchased(self):
-        """Check if all upgrades have been purchased"""
-        return all(upgrade.purchased for upgrade in self.upgrade_manager.upgrades.values())
+    def check_world_devoured(self):
+        """The world is devoured once every upgrade is bought and every manager is hired"""
+        return (all(upgrade.purchased for upgrade in self.upgrade_manager.upgrades.values())
+                and all(resource.has_manager for resource in self.resources.values()))
 
     def reset_game(self):
         """Reset the game state while keeping worlds_destroyed counter"""
         self.sanity = 0
-        self.worlds_destroyed += 1
         self.dream_seconds = 0.0
-        self.show_world_end = False
+        self.devoured_seconds = None
+        self.endless = False
 
         # Reset resources
         for resource in self.resources.values():

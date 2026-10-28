@@ -10,8 +10,17 @@
 </head>
 <body data-random-name-url="{{ url_for('api_random_name') }}"
       data-new-game-url="{{ url_for('api_new_game') }}"
-      data-play-url="{{ url_for('api_play') }}">
+      data-play-url="{{ url_for('api_play') }}"
+      data-account-url="{{ url_for('api_account') }}"
+      data-register-url="{{ url_for('api_register') }}"
+      data-login-url="{{ url_for('api_login') }}"
+      data-logout-url="{{ url_for('api_logout') }}"
+      data-sync-url="{{ url_for('api_sync') }}"
+      data-delete-save-url="{{ url_for('api_delete_save') }}">
     <div class="style-bar">
+        <span id="account-name" class="account-name" hidden></span>
+        <button type="button" class="small-button" id="login-button">Log In</button>
+        <button type="button" class="small-button" id="logout-button" hidden>Log Out</button>
         <label for="style-picker">Style</label>
         <select id="style-picker">
             {% for name in great_old_ones %}
@@ -24,6 +33,34 @@
         <h1 class="title">Dead But Dreaming</h1>
         <button type="button" class="menu-button" id="new-game">New Game</button>
         <button type="button" class="menu-button" id="load-game">Load Game</button>
+        <button type="button" class="menu-button" id="show-achievements">Achievements</button>
+    </section>
+
+    <section id="login" class="screen menu" hidden>
+        <h1 class="title">Log In</h1>
+        <p id="login-warning" class="login-warning">Not secure: this site doesn't use an encrypted connection, so your password can be seen by others on the network. Use a password you don't use anywhere else.</p>
+        <form id="login-form" class="menu-form">
+            <input id="login-username" class="login-input" maxlength="20" autocomplete="username" placeholder="Username" aria-label="Username">
+            <input id="login-password" class="login-input" type="password" autocomplete="current-password" placeholder="Password" aria-label="Password">
+            <button type="submit" class="menu-button">Log In</button>
+            <button type="button" class="menu-button" id="register">Create Account</button>
+            <button type="button" class="menu-button" id="login-back">Back</button>
+        </form>
+        <p id="login-error" class="error" role="alert"></p>
+        <p class="login-note">Your saves stay in this browser too. There is no password reset, so keep your password somewhere safe.</p>
+    </section>
+
+    <section id="achievements" class="screen menu" hidden>
+        <h1 class="title">Achievements</h1>
+        <ul class="achievement-list">
+            {% for key, achievement in achievements.items() %}
+            <li class="achievement" data-achievement="{{ key }}">
+                <span class="achievement-name">{{ achievement.name }}</span>
+                <span class="achievement-desc">{{ achievement.description }}</span>
+            </li>
+            {% endfor %}
+        </ul>
+        <button type="button" class="menu-button" id="achievements-back">Back to Menu</button>
     </section>
 
     <section id="name-entry" class="screen menu" hidden>
@@ -87,7 +124,23 @@
         <footer class="game-footer">
             <p id="difficulty-label" class="difficulty-label"></p>
             <p id="dream-time" class="number"></p>
+            <p id="worlds-devoured" class="number"></p>
+            <p id="devoured-label" class="number" hidden></p>
+            <button type="button" class="small-button" id="footer-achievements">Achievements</button>
         </footer>
+    </section>
+
+    <section id="ending" class="screen menu" hidden>
+        <h1 class="title">The world is devoured.</h1>
+        <p class="ending-text">Your dream lasted <span id="ending-time" class="number"></span> on <span id="ending-difficulty"></span>.</p>
+        <p class="ending-text">Worlds devoured: <span id="ending-worlds" class="number"></span></p>
+        <div class="menu-form">
+            <button type="button" class="menu-button" id="new-world">Begin a New World</button>
+            <p class="ending-hint">Azathoth spins up a fresh worldline.</p>
+            <button type="button" class="menu-button" id="endless">Endless Mode</button>
+            <p class="ending-hint">Keep feeding on the souls of the world you devoured.</p>
+            <button type="button" class="menu-button" id="delete-world">Delete This World</button>
+        </div>
     </section>
 
     <div id="confirm" class="modal" hidden>
@@ -98,15 +151,6 @@
         </div>
     </div>
 
-    <div id="world-end" class="modal" hidden>
-        <div class="modal-box">
-            <p>Congratulations! Your Great Old One has devoured this world.</p>
-            <p>Would you like Azathoth to devour this worldline and spin you up another one?</p>
-            <div class="choices">
-                <button type="button" class="choice yes" id="world-end-yes">Yes</button>
-                <button type="button" class="choice no" id="world-end-no">No</button>
-            </div>
-        </div>
-    </div>
+    <div id="toasts" class="toasts" aria-live="polite"></div>
 </body>
 </html>

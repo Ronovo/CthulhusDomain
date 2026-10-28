@@ -27,6 +27,7 @@
             localStorage.removeItem(SAVE_PREFIX + name);
         } catch {
         }
+        if (account) request(urls.deleteSaveUrl, { name }).catch(console.error);
     }
 
     function listSaves() {
@@ -47,7 +48,10 @@
             body: JSON.stringify(body),
         };
         const response = await fetch(url, options);
-        if (!response.ok) throw new Error(`${url} returned ${response.status}`);
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.error || `${url} returned ${response.status}`);
+        }
         return response.json();
     }
 
@@ -125,6 +129,63 @@
         startGame(data.save);
     }
 
+    // Achievements and the devour tally belong to this browser, not to one save, so they survive
+    // deleting a world.
+    const ACHIEVEMENTS_KEY = "cthulhus-dominion:achievements";
+    const DEVOURED_KEY = "cthulhus-dominion:devoured";
+
+    function readDevoured() {
+        try {
+            const devoured = JSON.parse(localStorage.getItem(DEVOURED_KEY));
+            return devoured && typeof devoured === "object" && !Array.isArray(devoured) ? devoured : {};
+        } catch {
+            return {};
+        }
+    }
+
+    function writeDevoured(devoured) {
+        try {
+            localStorage.setItem(DEVOURED_KEY, JSON.stringify(devoured));
+        } catch {
+        }
+    }
+
+    function readAchievements() {
+        try {
+            const earned = JSON.parse(localStorage.getItem(ACHIEVEMENTS_KEY));
+            return Array.isArray(earned) ? earned : [];
+        } catch {
+            return [];
+        }
+    }
+
+    function addAchievements(ids) {
+        try {
+            localStorage.setItem(ACHIEVEMENTS_KEY, JSON.stringify([...new Set([...readAchievements(), ...ids])]));
+        } catch {
+        }
+    }
+
+    function markEarnedAchievements() {
+        const earned = new Set(readAchievements());
+        for (const item of document.querySelectorAll("[data-achievement]")) {
+            item.classList.toggle("earned", earned.has(item.dataset.achievement));
+        }
+    }
+
+    function showAchievements() {
+        markEarnedAchievements();
+        $("achievements-back").textContent = save ? "Back to Game" : "Back to Menu";
+        show("achievements");
+    }
+
+    function showToast(achievement) {
+        const toast = el("div", "toast");
+        toast.append(el("span", "toast-title", "Achievement unlocked"), el("span", "toast-name", achievement.name));
+        $("toasts").append(toast);
+        setTimeout(() => toast.remove(), 5000);
+    }
+
     function showLoadList() {
         const names = listSaves();
         $("no-saves").hidden = names.length > 0;
@@ -151,6 +212,7 @@
         $("name-input").focus();
     });
     $("load-game").addEventListener("click", showLoadList);
+    $("show-achievements").addEventListener("click", showAchievements);
     $("random-name").addEventListener("click", async () => {
         $("name-input").value = (await request(urls.randomNameUrl)).name;
     });
@@ -161,6 +223,74 @@
     for (const button of document.querySelectorAll(".back")) {
         button.addEventListener("click", () => show("main-menu"));
     }
+    $("footer-achievements").addEventListener("click", showAchievements);
+    $("achievements-back").addEventListener("click", () => show(save ? "game" : "main-menu"));
+
+    // Account: optional. Logging in merges this browser's progress with the account's, and while
+    // logged in the server also keeps every save in the account.
+
+    let account = null;
+
+    function setAccount(username) {
+        account = username;
+        $("account-name").textContent = username || "";
+        $("account-name").hidden = !username;
+        $("login-button").hidden = Boolean(username);
+        $("logout-button").hidden = !username;
+    }
+
+    async function syncAccount() {
+        const saves = {};
+        for (const name of listSaves()) {
+            const local = readSave(name);
+            if (local) saves[name] = local;
+        }
+        const merged = await request(urls.syncUrl, {
+            saves, achievements: readAchievements(), devoured: readDevoured(),
+        });
+        Object.values(merged.saves).forEach(writeSave);
+        addAchievements(merged.achievements);
+        writeDevoured(merged.devoured);
+    }
+
+    async function submitLogin(url) {
+        $("login-error").textContent = "";
+        try {
+            const data = await request(url, {
+                username: $("login-username").value, password: $("login-password").value,
+            });
+            $("login-password").value = "";
+            setAccount(data.username);
+            await syncAccount();
+            show(save ? "game" : "main-menu");
+        } catch (error) {
+            $("login-error").textContent = error.message;
+        }
+    }
+
+    $("login-warning").hidden = location.protocol === "https:";
+    $("login-button").addEventListener("click", () => {
+        $("login-error").textContent = "";
+        show("login");
+        $("login-username").focus();
+    });
+    $("login-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        submitLogin(urls.loginUrl);
+    });
+    $("register").addEventListener("click", () => submitLogin(urls.registerUrl));
+    $("login-back").addEventListener("click", () => show(save ? "game" : "main-menu"));
+    $("logout-button").addEventListener("click", async () => {
+        await request(urls.logoutUrl, {}).catch(console.error);
+        setAccount(null);
+    });
+    request(urls.accountUrl)
+        .then((data) => {
+            if (!data.username) return;
+            setAccount(data.username);
+            return syncAccount();
+        })
+        .catch(console.error);
     $("confirm-yes").addEventListener("click", () => {
         $("confirm").hidden = true;
         onConfirm();
@@ -179,6 +309,10 @@
     let upgradeKey = "";
     let resourceOptions = "";
     let upgradeButtons = {};
+    let onEnding = false;
+    let timer = null;
+    // Bumped when a game stops, so a request still in flight can't write over a deleted save
+    let session = 0;
 
     function act(type, target = "") {
         pending.push({ type, target });
@@ -188,17 +322,27 @@
     async function tick() {
         if (busy || !save || document.hidden) return;
         busy = true;
+        const mySession = session;
         const actions = pending;
         pending = [];
         try {
-            const data = await request(urls.playUrl, { save, actions });
+            const data = await request(urls.playUrl, {
+                save, actions, achievements: readAchievements(), devoured: readDevoured(),
+            });
+            if (mySession !== session) return;
             save = data.save;
             writeSave(save);
+            writeDevoured(data.devoured);
             render(data.view);
+            if (data.new_achievements.length) {
+                addAchievements(data.new_achievements.map((achievement) => achievement.id));
+                if (!$("achievements").hidden) markEarnedAchievements();
+                data.new_achievements.forEach(showToast);
+            }
         } catch (error) {
             console.error(error);
         } finally {
-            busy = false;
+            if (mySession === session) busy = false;
         }
         if (pending.length) tick();
     }
@@ -210,20 +354,37 @@
         applyStyle(hasStyle(nameStyle) ? nameStyle : "cthulhu");
         show("game");
         tick();
-        setInterval(tick, TICK_MS);
-        document.addEventListener("visibilitychange", tick);
+        timer = setInterval(tick, TICK_MS);
     }
 
+    function stopGame() {
+        clearInterval(timer);
+        session += 1;
+        save = null;
+        pending = [];
+        busy = false;
+        rows = null;
+        lastView = null;
+        upgradeKey = "";
+        resourceOptions = "";
+        onEnding = false;
+        document.title = "Dead But Dreaming";
+    }
+
+    document.addEventListener("visibilitychange", tick);
     $("game").addEventListener("click", (event) => {
         const button = event.target.closest("[data-action]");
         if (button) act(button.dataset.action, button.dataset.target);
     });
-    $("world-end-yes").addEventListener("click", () => {
-        $("world-end").hidden = true;
-        act("reset");
-    });
-    $("world-end-no").addEventListener("click", () => {
-        $("world-end").hidden = true;
+    $("new-world").addEventListener("click", () => act("reset"));
+    $("endless").addEventListener("click", () => act("endless"));
+    $("delete-world").addEventListener("click", () => {
+        const name = save.player_name;
+        askConfirm(`Delete ${name}? This can't be undone.`, () => {
+            stopGame();
+            deleteSave(name);
+            show("main-menu");
+        });
     });
     for (const id of ["type-filter", "resource-filter"]) {
         $(id).addEventListener("change", () => {
@@ -335,6 +496,19 @@
         setText($("sanity"), `Sanity: ${formatNumber(view.sanity)}`);
         setText($("difficulty-label"), `Difficulty: ${view.difficulty}`);
         setText($("dream-time"), `Time Since Dream Began: ${view.dream_time}`);
+        setText($("worlds-devoured"), `Worlds Devoured: ${formatNumber(view.worlds_devoured)}`);
+        $("devoured-label").hidden = !view.endless;
+        if (view.endless) setText($("devoured-label"), `World devoured in ${view.devoured_time}`);
+
+        if (view.ending !== onEnding) {
+            onEnding = view.ending;
+            show(onEnding ? "ending" : "game");
+        }
+        if (view.ending) {
+            setText($("ending-time"), view.devoured_time);
+            setText($("ending-difficulty"), view.difficulty_name);
+            setText($("ending-worlds"), formatNumber(view.worlds_devoured));
+        }
 
         if (!rows) buildRows(view.resources);
         for (const resource of view.resources) {
@@ -356,6 +530,5 @@
 
         lastView = view;
         renderUpgrades(view);
-        if (view.world_end) $("world-end").hidden = false;
     }
 })();

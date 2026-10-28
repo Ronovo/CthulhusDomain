@@ -27,6 +27,20 @@ The game logic is Python. The browser keeps the save and shows the game; it does
 2. About four times a second, and whenever you click, the browser sends its save and your clicks to `POST /api/play`.
 3. Flask rebuilds the `Game` from the save, advances it by the time since `last_saved`, applies the clicks, and sends back the new save plus what to display. Time spent with the game closed is covered by that same step: resources with a manager keep producing, and a resource you clicked by hand finishes its one cycle.
 
+## Accounts
+Logging in is optional. Without it, everything stays in the browser. With it, progress follows you to any browser you log in from:
+
+- Logging in merges this browser's saves, achievements and devour counts with the account's. For saves with the same name the newer one wins; devour counts keep the higher number for each difficulty.
+- While logged in, every save is also stored in the account, and deleting a world deletes it from the account too.
+- Logging out keeps this browser's copy.
+
+Accounts are kept in a SQLite database in the data folder (`DATA_DIR`, `/app/data` in the container). Passwords are stored as salted hashes.
+
+### Security caveats
+- **Unencrypted connections:** unless the site is served over HTTPS, passwords cross the network in plain text. The login screen warns about this whenever the page isn't on HTTPS. Use a password you don't use anywhere else.
+- **No rate limit** on login attempts.
+- **No password reset:** there is no email, so a forgotten password means a new account.
+
 ## Project Structure
 ```
 Dead-But-Dreaming/
@@ -34,6 +48,8 @@ Dead-But-Dreaming/
 │   ├── main.py          # Game state, resources, production and saves
 │   ├── upgrades.py      # Upgrade management
 │   ├── menu.py          # Great Old One names
+│   ├── achievements.py  # Achievement definitions and checks
+│   ├── accounts.py      # Optional logins and account storage
 │   ├── webapp.py        # Flask app and API
 │   ├── templates/       # Page markup
 │   └── static/          # CSS, display script, font, icon
@@ -57,7 +73,9 @@ Then open http://localhost:5000.
 ```bash
 docker compose up -d --build
 ```
-Then open http://localhost:8005. The local compose file runs your working copy as-is.
+Then open http://localhost:8005. The local compose file runs your working copy as-is, and keeps accounts in the `dead-but-dreaming-data` volume.
+
+Logins are signed with `DEAD_BUT_DREAMING_SECRET_KEY`. If it isn't set, a key is generated once and kept in the data folder, so set it explicitly when the data folder isn't kept between runs.
 
 When `REPO_URL` is set (the image sets it to this repository), the container updates itself from GitHub every time it starts: the first start fetches `main` over the code baked into the image, and later starts pull again. If GitHub can't be reached it starts with the code it already has. To pick up new commits on a running container, restart it.
 

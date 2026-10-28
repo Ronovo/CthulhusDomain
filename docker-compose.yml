@@ -8,4 +8,9 @@ services:
     environment:
       # Empty so the container runs this working copy instead of pulling main from GitHub.
       REPO_URL: ""
+    volumes:
+      - dead-but-dreaming-data:/app/data
     restart: unless-stopped
+
+volumes:
+  dead-but-dreaming-data:
