@@ -3,11 +3,22 @@ from typing import Dict
 
 from flask import Flask, abort, jsonify, render_template, request
 
-from main import Game
+from main import DEFAULT_DIFFICULTY, DIFFICULTIES, Game
 from menu import GREAT_OLD_ONES, MAX_NAME_LENGTH, random_name
 
 # A cycle shorter than this is too fast to animate, so its bar is drawn solid
 SOLID_BAR_SECONDS = 0.25
+
+
+def format_duration(seconds: float) -> str:
+    minutes, secs = divmod(int(seconds), 60)
+    hours, minutes = divmod(minutes, 60)
+    days, hours = divmod(hours, 24)
+    if days:
+        return f"{days}d {hours:02d}h {minutes:02d}m {secs:02d}s"
+    if hours:
+        return f"{hours}h {minutes:02d}m {secs:02d}s"
+    return f"{minutes}m {secs:02d}s"
 
 
 def build_view(game: Game) -> Dict:
@@ -51,6 +62,8 @@ def build_view(game: Game) -> Dict:
         "resources": resources,
         "upgrades": upgrades,
         "world_end": game.show_world_end,
+        "difficulty": f"{DIFFICULTIES[game.difficulty].name} ({DIFFICULTIES[game.difficulty].estimate})",
+        "dream_time": format_duration(game.dream_seconds),
     }
 
 
@@ -59,7 +72,8 @@ def create_app() -> Flask:
 
     @app.get("/")
     def index():
-        return render_template("index.html", max_name_length=MAX_NAME_LENGTH, great_old_ones=GREAT_OLD_ONES)
+        return render_template("index.html", max_name_length=MAX_NAME_LENGTH, great_old_ones=GREAT_OLD_ONES,
+                               difficulties=DIFFICULTIES, default_difficulty=DEFAULT_DIFFICULTY)
 
     @app.get("/api/random-name")
     def api_random_name():
@@ -67,10 +81,14 @@ def create_app() -> Flask:
 
     @app.post("/api/new-game")
     def api_new_game():
-        name = str((request.get_json(silent=True) or {}).get("name", "")).strip()
-        if not name or len(name) > MAX_NAME_LENGTH:
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict):
             abort(400)
-        return jsonify(save=Game(name).save_game_state())
+        name = str(body.get("name", "")).strip()
+        difficulty = body.get("difficulty", DEFAULT_DIFFICULTY)
+        if not name or len(name) > MAX_NAME_LENGTH or not isinstance(difficulty, str) or difficulty not in DIFFICULTIES:
+            abort(400)
+        return jsonify(save=Game(name, difficulty=difficulty).save_game_state())
 
     # The browser sends its save and any clicks since the last call; the game catches up to now,
     # applies the clicks in order, and sends back the new save for the browser to keep.

@@ -121,7 +121,7 @@
     }
 
     async function newGame(name) {
-        const data = await request(urls.newGameUrl, { name });
+        const data = await request(urls.newGameUrl, { name, difficulty: $("difficulty").value });
         startGame(data.save);
     }
 
@@ -333,6 +333,8 @@
     function render(view) {
         setText($("player-name"), `Great Old One: ${view.player_name}`);
         setText($("sanity"), `Sanity: ${formatNumber(view.sanity)}`);
+        setText($("difficulty-label"), `Difficulty: ${view.difficulty}`);
+        setText($("dream-time"), `Time Since Dream Began: ${view.dream_time}`);
 
         if (!rows) buildRows(view.resources);
         for (const resource of view.resources) {

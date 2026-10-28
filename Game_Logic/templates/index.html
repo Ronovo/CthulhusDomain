@@ -31,6 +31,14 @@
         <form id="name-form" class="menu-form">
             <input id="name-input" class="name-input" maxlength="{{ max_name_length }}" autocomplete="off" aria-label="Name">
             <button type="button" class="menu-button" id="random-name">Random Name</button>
+            <label class="difficulty-field">
+                <span>Difficulty</span>
+                <select id="difficulty">
+                    {% for key, difficulty in difficulties.items() %}
+                    <option value="{{ key }}"{% if key == default_difficulty %} selected{% endif %}>{{ difficulty.name }} ({{ difficulty.estimate }})</option>
+                    {% endfor %}
+                </select>
+            </label>
             <button type="submit" class="menu-button">Confirm</button>
             <button type="button" class="menu-button back">Back to Menu</button>
         </form>
@@ -76,6 +84,10 @@
                 </div>
             </aside>
         </div>
+        <footer class="game-footer">
+            <p id="difficulty-label" class="difficulty-label"></p>
+            <p id="dream-time" class="number"></p>
+        </footer>
     </section>
 
     <div id="confirm" class="modal" hidden>

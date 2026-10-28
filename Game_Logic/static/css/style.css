@@ -339,6 +339,21 @@ select {
     border-bottom-color: var(--accent);
 }
 
+.difficulty-field {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+    font-size: 22px;
+}
+
+.difficulty-field select {
+    font-size: 22px;
+    padding: 8px 12px;
+    max-width: 100%;
+}
+
 .error {
     color: var(--bad);
     font-size: 32px;
@@ -350,7 +365,7 @@ select {
 .game {
     max-width: 1320px;
     margin: 0 auto;
-    padding: 8px 16px 24px;
+    padding: 8px 16px 8px;
 }
 
 .game-header {
@@ -485,7 +500,7 @@ select {
 .upgrades {
     display: flex;
     flex-direction: column;
-    height: 700px;
+    height: 668px;
     background: var(--panel);
     border: 2px solid var(--border);
     box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.4);
@@ -570,6 +585,21 @@ select {
     font-size: 20px;
     text-align: center;
     margin: 12px 0;
+}
+
+.game-footer {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: baseline;
+    gap: 4px 32px;
+    margin-top: 8px;
+    font-size: 22px;
+    text-align: center;
+}
+
+.difficulty-label {
+    color: var(--muted);
 }
 
 /* Popups */

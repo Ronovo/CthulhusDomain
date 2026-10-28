@@ -58,7 +58,7 @@ class UpgradeManager:
                 "speed_2x": ("Efficient Bloodletting", "2x Speed for Sacrifices"),
                 "speed_3x": ("Mass Ceremony", "3x Speed for Sacrifices"),
                 "speed_5x": ("Grand Harvest", "5x Speed for Sacrifices"),
-                "prod_2x": ("Pure Bloodline", "2x Production for Sacrifices"),
+                "prod_2x": ("Willing Offerings", "2x Production for Sacrifices"),
                 "prod_5x": ("Heart of Darkness", "5x Production for Sacrifices")
             },
             "dark_rituals": {
