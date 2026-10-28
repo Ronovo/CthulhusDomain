@@ -30,4 +30,4 @@ EXPOSE 8000
 # a request. Threaded workers keep each browser's connection open between its updates instead of opening a
 # new one four times a second, which matters when players reach the server through a NAT or VPN hop.
 ENTRYPOINT ["git-sync"]
-CMD ["gunicorn", "--chdir", "Game_Logic", "--bind", "0.0.0.0:8000", "--worker-class", "gthread", "--workers", "2", "--threads", "4", "--keep-alive", "5", "webapp:create_app()"]
+CMD ["gunicorn", "--chdir", "Game_Logic", "--bind", "0.0.0.0:8000", "--worker-class", "gthread", "--workers", "2", "--threads", "4", "--keep-alive", "5", "--preload", "webapp:create_app()"]

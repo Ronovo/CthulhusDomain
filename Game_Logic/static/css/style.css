@@ -596,14 +596,20 @@ select {
 }
 
 .game-footer {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    align-items: baseline;
-    gap: 4px 32px;
     margin-top: 8px;
     font-size: 22px;
     text-align: center;
+}
+
+.footer-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+
+.footer-cell .number {
+    white-space: normal;
 }
 
 .difficulty-label {
