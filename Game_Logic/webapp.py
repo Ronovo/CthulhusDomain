@@ -54,6 +54,19 @@ def read_player_record(body: Dict) -> PlayerRecord:
     )
 
 
+def progress_marker(game: Game) -> tuple:
+    """Changes only when something is unlocked, hired, bought or devoured, which is when a
+    logged-in player's progress is written to their account straight away"""
+    return (
+        tuple(resource.is_unlocked for resource in game.resources.values()),
+        tuple(resource.has_manager for resource in game.resources.values()),
+        tuple(upgrade.purchased for upgrade in game.upgrade_manager.upgrades.values()),
+        game.devoured_seconds is not None,
+        game.endless,
+        game.worlds_destroyed,
+    )
+
+
 def format_duration(seconds: float) -> str:
     minutes, secs = divmod(int(seconds), 60)
     hours, minutes = divmod(minutes, 60)
@@ -181,6 +194,7 @@ def create_app() -> Flask:
             abort(400)
         game.advance(time.time())
         worlds_before = game.worlds_destroyed
+        progress_before = progress_marker(game)
 
         actions = {
             "resource": game.click_resource,
@@ -201,11 +215,14 @@ def create_app() -> Flask:
                 "description": ACHIEVEMENTS[achievement_id].description}
                for achievement_id in new_achievements(game, player)]
 
+        # A logged-in account is written on the browser's 30 second backup and on real progress;
+        # every other tick leaves the database alone.
         save = game.save_game_state()
-        user_id = current_user()
-        if user_id is not None:
-            accounts.store_save(user_id, save)
-            accounts.store_record(user_id, player.earned, player.devoured)
+        if body.get("backup") is True or new or progress_marker(game) != progress_before:
+            user_id = current_user()
+            if user_id is not None:
+                accounts.store_save(user_id, save)
+                accounts.store_record(user_id, player.earned, player.devoured)
 
         return jsonify(save=save, view=build_view(game), new_achievements=new, devoured=player.devoured)
 

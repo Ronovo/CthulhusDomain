@@ -248,15 +248,15 @@ select {
     justify-content: flex-end;
     align-items: center;
     gap: 8px;
-    height: 48px;
-    padding: 12px 16px 0;
+    height: 40px;
+    padding: 8px 16px 0;
     font-size: 18px;
 }
 
 /* Menus */
 
 .menu {
-    min-height: calc(100vh - 48px);
+    min-height: calc(100vh - 40px);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -363,6 +363,9 @@ select {
 /* Game */
 
 .game {
+    /* Rows shrink to fit the window, between 48px and 56px. 224px is everything on the game
+       screen that isn't a resource row: style bar, header, footer, padding and the gaps between rows. */
+    --row-height: clamp(48px, calc((100vh - 224px) / 10), 56px);
     max-width: 1320px;
     margin: 0 auto;
     padding: 8px 16px 8px;
@@ -373,7 +376,7 @@ select {
     grid-template-columns: 1fr auto 1fr;
     align-items: center;
     gap: 16px;
-    margin-bottom: 16px;
+    margin-bottom: 8px;
 }
 
 .player-name {
@@ -400,7 +403,7 @@ select {
 .resources {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 8px;
 }
 
 .resource-row {
@@ -416,7 +419,7 @@ select {
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    height: 56px;
+    height: var(--row-height);
     padding: 0 16px;
     border: 1px solid var(--border);
     box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.4);
@@ -500,7 +503,7 @@ select {
 .upgrades {
     display: flex;
     flex-direction: column;
-    height: 668px;
+    height: calc(var(--row-height) * 10 + 8px * 9);
     background: var(--panel);
     border: 2px solid var(--border);
     box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.4);
@@ -560,6 +563,11 @@ select {
 
 .upgrade-button.unaffordable {
     background: linear-gradient(var(--bad), var(--btn-end));
+}
+
+[data-pressed] {
+    filter: brightness(1.35);
+    box-shadow: inset 0 0 0 2px var(--accent);
 }
 
 .upgrade-top {
@@ -719,14 +727,34 @@ select {
 }
 
 .toast {
+    position: relative;
     display: flex;
     flex-direction: column;
     max-width: calc(100vw - 32px);
-    padding: 24px 32px;
+    padding: 24px 64px 24px 32px;
     background: var(--surface);
     border: 4px solid var(--accent);
     box-shadow: 0 0 24px var(--bar-glow);
     animation: toast-in 0.3s ease-out;
+    pointer-events: auto;
+}
+
+.toast-close {
+    position: absolute;
+    top: 4px;
+    right: 12px;
+    padding: 0 4px;
+    background: none;
+    border: none;
+    color: var(--accent);
+    font-size: 32px;
+    line-height: 1;
+}
+
+.toast-close:hover,
+.toast-close:focus-visible {
+    color: var(--text);
+    outline: none;
 }
 
 .toast-title {

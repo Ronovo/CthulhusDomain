@@ -98,11 +98,13 @@ class Accounts:
     def store_record(self, user_id: int, achievements: Iterable[str], devoured: Dict[str, int]):
         """Combine achievements, and keep the higher devour count per difficulty so the same
         world is never counted twice"""
-        current = self.load(user_id)
+        current = self.load_record(user_id)
         merged_achievements = sorted(set(current["achievements"]) | set(achievements))
         merged_devoured = dict(current["devoured"])
         for difficulty, count in devoured.items():
             merged_devoured[difficulty] = max(merged_devoured.get(difficulty, 0), count)
+        if merged_achievements == sorted(current["achievements"]) and merged_devoured == current["devoured"]:
+            return
         with self._db() as db:
             db.execute(
                 """INSERT INTO records (user_id, achievements, devoured) VALUES (?, ?, ?)
@@ -111,12 +113,15 @@ class Accounts:
                 (user_id, json.dumps(merged_achievements), json.dumps(merged_devoured)),
             )
 
-    def load(self, user_id: int) -> Dict:
+    def load_record(self, user_id: int) -> Dict:
         with self._db() as db:
-            saves = db.execute("SELECT name, data FROM saves WHERE user_id = ?", (user_id,)).fetchall()
             record = db.execute("SELECT achievements, devoured FROM records WHERE user_id = ?", (user_id,)).fetchone()
         return {
-            "saves": {name: json.loads(data) for name, data in saves},
             "achievements": json.loads(record[0]) if record else [],
             "devoured": json.loads(record[1]) if record else {},
         }
+
+    def load(self, user_id: int) -> Dict:
+        with self._db() as db:
+            saves = db.execute("SELECT name, data FROM saves WHERE user_id = ?", (user_id,)).fetchall()
+        return {"saves": {name: json.loads(data) for name, data in saves}, **self.load_record(user_id)}

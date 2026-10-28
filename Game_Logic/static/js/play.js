@@ -181,9 +181,16 @@
 
     function showToast(achievement) {
         const toast = el("div", "toast");
-        toast.append(el("span", "toast-title", "Achievement unlocked"), el("span", "toast-name", achievement.name));
+        const close = el("button", "toast-close", "×");
+        close.type = "button";
+        close.setAttribute("aria-label", "Close");
+        toast.append(close, el("span", "toast-title", "Achievement unlocked"), el("span", "toast-name", achievement.name));
         $("toasts").append(toast);
-        setTimeout(() => toast.remove(), 5000);
+        const timeout = setTimeout(() => toast.remove(), 5000);
+        close.addEventListener("click", () => {
+            clearTimeout(timeout);
+            toast.remove();
+        });
     }
 
     function showLoadList() {
@@ -313,9 +320,13 @@
     let timer = null;
     // Bumped when a game stops, so a request still in flight can't write over a deleted save
     let session = 0;
+    const BACKUP_MS = 30_000;
+    let lastBackup = 0;
 
-    function act(type, target = "") {
-        pending.push({ type, target });
+    // A clicked button stays marked as pressed until the request carrying that click comes back.
+    function act(type, target = "", button = null) {
+        if (button) button.dataset.pressed = "";
+        pending.push({ type, target, button });
         tick();
     }
 
@@ -325,11 +336,17 @@
         const mySession = session;
         const actions = pending;
         pending = [];
+        const backup = Boolean(account) && Date.now() - lastBackup >= BACKUP_MS;
         try {
             const data = await request(urls.playUrl, {
-                save, actions, achievements: readAchievements(), devoured: readDevoured(),
+                save,
+                actions: actions.map(({ type, target }) => ({ type, target })),
+                achievements: readAchievements(),
+                devoured: readDevoured(),
+                backup,
             });
             if (mySession !== session) return;
+            if (backup) lastBackup = Date.now();
             save = data.save;
             writeSave(save);
             writeDevoured(data.devoured);
@@ -343,12 +360,16 @@
             console.error(error);
         } finally {
             if (mySession === session) busy = false;
+            for (const action of actions) {
+                if (action.button) delete action.button.dataset.pressed;
+            }
         }
         if (pending.length) tick();
     }
 
     function startGame(loaded) {
         save = loaded;
+        lastBackup = Date.now();
         document.title = `Dead But Dreaming - ${save.player_name}`;
         const nameStyle = save.player_name.toLowerCase();
         applyStyle(hasStyle(nameStyle) ? nameStyle : "cthulhu");
@@ -372,9 +393,17 @@
     }
 
     document.addEventListener("visibilitychange", tick);
+    // sendBeacon is delivered even while the page is closing, so the account gets the final save.
+    window.addEventListener("pagehide", () => {
+        if (!account || !save) return;
+        const body = JSON.stringify({
+            saves: { [save.player_name]: save }, achievements: readAchievements(), devoured: readDevoured(),
+        });
+        navigator.sendBeacon(urls.syncUrl, new Blob([body], { type: "application/json" }));
+    });
     $("game").addEventListener("click", (event) => {
         const button = event.target.closest("[data-action]");
-        if (button) act(button.dataset.action, button.dataset.target);
+        if (button) act(button.dataset.action, button.dataset.target, button);
     });
     $("new-world").addEventListener("click", () => act("reset"));
     $("endless").addEventListener("click", () => act("endless"));
@@ -467,6 +496,16 @@
         return button;
     }
 
+    function placeChildren(container, nodes) {
+        const keep = new Set(nodes);
+        for (const child of [...container.children]) {
+            if (!keep.has(child)) child.remove();
+        }
+        nodes.forEach((node, index) => {
+            if (container.children[index] !== node) container.insertBefore(node, container.children[index] || null);
+        });
+    }
+
     function renderUpgrades(view) {
         syncResourceFilter(view.resources);
         const type = $("type-filter").value;
@@ -474,15 +513,21 @@
         const shown = view.upgrades.filter((upgrade) =>
             (!type || upgrade.type === type) && (!resource || upgrade.resource === resource));
 
+        // Buttons that stay on the list are kept, not rebuilt, so a click that is halfway done when a
+        // purchase changes the list still lands.
         const key = [type, resource, ...shown.map((upgrade) => upgrade.id)].join(",");
         if (key !== upgradeKey) {
             upgradeKey = key;
-            upgradeButtons = {};
+            const shownIds = new Set(shown.map((upgrade) => upgrade.id));
+            for (const id of Object.keys(upgradeButtons)) {
+                if (!shownIds.has(id)) delete upgradeButtons[id];
+            }
             for (const group of ["speed", "production"]) {
                 const items = shown.filter((upgrade) => upgrade.type === group);
                 const section = $(`${group}-upgrades`);
                 section.hidden = items.length === 0;
-                section.querySelector(".upgrade-items").replaceChildren(...items.map(upgradeItem));
+                placeChildren(section.querySelector(".upgrade-items"),
+                    items.map((upgrade) => upgradeButtons[upgrade.id] || upgradeItem(upgrade)));
             }
             $("no-upgrades").hidden = shown.length > 0;
         }
