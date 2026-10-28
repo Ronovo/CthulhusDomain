@@ -244,6 +244,7 @@
         $("account-name").textContent = username || "";
         $("account-name").hidden = !username;
         $("login-button").hidden = Boolean(username);
+        $("ronovo-button").hidden = Boolean(username) || !urls.ronovoUrl;
         $("logout-button").hidden = !username;
     }
 
@@ -266,21 +267,80 @@
         try {
             const data = await request(url, {
                 username: $("login-username").value, password: $("login-password").value,
+                question: $("login-question").value, answer: $("login-answer").value,
             });
             $("login-password").value = "";
+            $("login-answer").value = "";
             setAccount(data.username);
             await syncAccount();
-            show(save ? "game" : "main-menu");
+            show(data.needs_security_question ? "security" : save ? "game" : "main-menu");
         } catch (error) {
             $("login-error").textContent = error.message;
         }
     }
+
+    // Reset takes two steps: the username brings up its security question, then the answer and a new
+    // password change it.
+    function showResetStep(question) {
+        $("reset-question").textContent = question || "";
+        for (const id of ["reset-question", "reset-answer", "reset-password"]) $(id).hidden = !question;
+        $("reset-username").readOnly = Boolean(question);
+        $("reset-submit").textContent = question ? "Reset Password" : "Next";
+    }
+
+    $("forgot-password").addEventListener("click", () => {
+        $("reset-error").textContent = "";
+        $("reset-username").value = $("login-username").value;
+        showResetStep(null);
+        show("reset");
+        $("reset-username").focus();
+    });
+    $("reset-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        $("reset-error").textContent = "";
+        try {
+            if ($("reset-answer").hidden) {
+                const data = await request(urls.resetQuestionUrl, { username: $("reset-username").value });
+                showResetStep(data.question);
+                $("reset-answer").focus();
+                return;
+            }
+            await request(urls.resetPasswordUrl, {
+                username: $("reset-username").value, answer: $("reset-answer").value,
+                password: $("reset-password").value,
+            });
+            $("reset-answer").value = "";
+            $("reset-password").value = "";
+            $("login-username").value = $("reset-username").value;
+            $("login-error").textContent = "Password changed. Log in with your new password.";
+            show("login");
+        } catch (error) {
+            $("reset-error").textContent = error.message;
+        }
+    });
+    $("reset-back").addEventListener("click", () => show("login"));
+    $("security-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        $("security-error").textContent = "";
+        try {
+            await request(urls.securityQuestionUrl, {
+                question: $("security-question").value, answer: $("security-answer").value,
+            });
+            $("security-answer").value = "";
+            show(save ? "game" : "main-menu");
+        } catch (error) {
+            $("security-error").textContent = error.message;
+        }
+    });
 
     $("login-warning").hidden = location.protocol === "https:";
     $("login-button").addEventListener("click", () => {
         $("login-error").textContent = "";
         show("login");
         $("login-username").focus();
+    });
+    $("ronovo-button").addEventListener("click", () => {
+        location.href = urls.ronovoUrl;
     });
     $("login-form").addEventListener("submit", (event) => {
         event.preventDefault();
@@ -294,8 +354,8 @@
     });
     request(urls.accountUrl)
         .then((data) => {
-            if (!data.username) return;
             setAccount(data.username);
+            if (!data.username) return;
             return syncAccount();
         })
         .catch(console.error);

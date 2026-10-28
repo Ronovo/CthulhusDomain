@@ -33,13 +33,21 @@ Logging in is optional. Without it, everything stays in the browser. With it, pr
 - Logging in merges this browser's saves, achievements and devour counts with the account's. For saves with the same name the newer one wins; devour counts keep the higher number for each difficulty.
 - While logged in, every save is also stored in the account, and deleting a world deletes it from the account too.
 - Logging out keeps this browser's copy.
+- Creating an account asks for a security question. **Forgot Password** resets the password with its answer, and
+  five wrong answers lock resets for 15 minutes. Accounts from before security questions pick one at their next login.
+
+With `RONOVO_SSO_URL` (the portfolio's address, such as `http://ronovo.lan`) and `RONOVO_SSO_PUBLIC_KEY`
+(printed by the portfolio's `python sso.py`) set, the top bar offers **Log in with Ronovo**. The first Ronovo
+login creates an account named after the Ronovo username, with a number added if that name is taken, and
+every later Ronovo login from any device uses the same one. That account has no password of its own, so
+Ronovo is the only way into it. Without those two settings the app runs on its own.
 
 Accounts are kept in a SQLite database in the data folder (`DATA_DIR`, `/app/data` in the container). Passwords are stored as salted hashes.
 
 ### Security caveats
 - **Unencrypted connections:** unless the site is served over HTTPS, passwords cross the network in plain text. The login screen warns about this whenever the page isn't on HTTPS. Use a password you don't use anywhere else.
 - **No rate limit** on login attempts.
-- **No password reset:** there is no email, so a forgotten password means a new account.
+- **Security answers:** anyone who knows or can guess your answer can reset your password, so pick an answer that isn't public.
 
 ## Project Structure
 ```

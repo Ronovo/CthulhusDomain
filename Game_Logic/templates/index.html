@@ -16,10 +16,15 @@
       data-login-url="{{ url_for('api_login') }}"
       data-logout-url="{{ url_for('api_logout') }}"
       data-sync-url="{{ url_for('api_sync') }}"
-      data-delete-save-url="{{ url_for('api_delete_save') }}">
+      data-delete-save-url="{{ url_for('api_delete_save') }}"
+      data-security-question-url="{{ url_for('api_security_question') }}"
+      data-reset-question-url="{{ url_for('api_reset_question') }}"
+      data-reset-password-url="{{ url_for('api_reset_password') }}"
+      {%- if ronovo %} data-ronovo-url="{{ url_for('sso_login') }}"{% endif %}>
     <div class="style-bar">
         <span id="account-name" class="account-name" hidden></span>
         <button type="button" class="small-button" id="login-button">Log In</button>
+        <button type="button" class="small-button" id="ronovo-button" hidden>Log In with Ronovo</button>
         <button type="button" class="small-button" id="logout-button" hidden>Log Out</button>
         <label for="style-picker">Style</label>
         <select id="style-picker">
@@ -43,11 +48,45 @@
             <input id="login-username" class="login-input" maxlength="20" autocomplete="username" placeholder="Username" aria-label="Username">
             <input id="login-password" class="login-input" type="password" autocomplete="current-password" placeholder="Password" aria-label="Password">
             <button type="submit" class="menu-button">Log In</button>
+            <p class="login-note">To create an account, also pick a security question. You need its answer to reset your password.</p>
+            <select id="login-question" class="login-input" aria-label="Security question">
+                <option value="">Security question</option>
+                {% for question in questions %}<option>{{ question }}</option>{% endfor %}
+            </select>
+            <input id="login-answer" class="login-input" maxlength="100" autocomplete="off" placeholder="Security answer" aria-label="Security answer">
             <button type="button" class="menu-button" id="register">Create Account</button>
+            <button type="button" class="menu-button" id="forgot-password">Forgot Password</button>
             <button type="button" class="menu-button" id="login-back">Back</button>
         </form>
         <p id="login-error" class="error" role="alert"></p>
-        <p class="login-note">Your saves stay in this browser too. There is no password reset, so keep your password somewhere safe.</p>
+        <p class="login-note">Your saves stay in this browser too.</p>
+    </section>
+
+    <section id="reset" class="screen menu" hidden>
+        <h1 class="title">Reset Password</h1>
+        <form id="reset-form" class="menu-form">
+            <input id="reset-username" class="login-input" maxlength="20" autocomplete="username" placeholder="Username" aria-label="Username">
+            <p id="reset-question" class="login-note" hidden></p>
+            <input id="reset-answer" class="login-input" maxlength="100" autocomplete="off" placeholder="Security answer" aria-label="Security answer" hidden>
+            <input id="reset-password" class="login-input" type="password" autocomplete="new-password" placeholder="New password" aria-label="New password" hidden>
+            <button type="submit" class="menu-button" id="reset-submit">Next</button>
+            <button type="button" class="menu-button" id="reset-back">Back</button>
+        </form>
+        <p id="reset-error" class="error" role="alert"></p>
+    </section>
+
+    <section id="security" class="screen menu" hidden>
+        <h1 class="title">Security Question</h1>
+        <p class="login-note">Pick a security question for your account. You need its answer to reset your password.</p>
+        <form id="security-form" class="menu-form">
+            <select id="security-question" class="login-input" aria-label="Security question">
+                <option value="">Security question</option>
+                {% for question in questions %}<option>{{ question }}</option>{% endfor %}
+            </select>
+            <input id="security-answer" class="login-input" maxlength="100" autocomplete="off" placeholder="Security answer" aria-label="Security answer">
+            <button type="submit" class="menu-button">Save</button>
+        </form>
+        <p id="security-error" class="error" role="alert"></p>
     </section>
 
     <section id="achievements" class="screen menu" hidden>

@@ -3,7 +3,10 @@ import secrets
 import time
 from typing import Dict, Optional
 
-from flask import Flask, abort, jsonify, render_template, request, session
+from flask import Flask, abort, jsonify, redirect, render_template, request, session, url_for
+
+import ronovo_sso
+from security_questions import QUESTIONS
 
 from accounts import AccountError, Accounts
 from achievements import ACHIEVEMENTS, PlayerRecord, new_achievements
@@ -139,7 +142,7 @@ def create_app() -> Flask:
         SESSION_COOKIE_SAMESITE="Lax",
         MAX_CONTENT_LENGTH=1024 * 1024,
     )
-    accounts = Accounts(os.path.join(DATA_DIR, "accounts.db"))
+    accounts = Accounts(os.path.join(DATA_DIR, "accounts.db"), app.config["SECRET_KEY"])
 
     def current_user() -> Optional[int]:
         user_id = session.get("user_id")
@@ -154,17 +157,28 @@ def create_app() -> Flask:
         session["user_id"] = user_id
         session["username"] = username
 
-    def credentials():
+    def json_body() -> Dict:
         body = request.get_json(silent=True)
         if not isinstance(body, dict):
             abort(400)
+        return body
+
+    def credentials():
+        body = json_body()
         return str(body.get("username", "")).strip(), str(body.get("password", ""))
+
+    def ronovo_login(account: Dict):
+        user_id = accounts.ronovo_user(account["sub"], account["username"])
+        log_in(user_id, accounts.username(user_id))
+        return redirect(url_for("index"))
+
+    ronovo_sso.add_flask_routes(app, "dead-but-dreaming", ronovo_login)
 
     @app.get("/")
     def index():
         return render_template("index.html", max_name_length=MAX_NAME_LENGTH, great_old_ones=GREAT_OLD_ONES,
                                difficulties=DIFFICULTIES, default_difficulty=DEFAULT_DIFFICULTY,
-                               achievements=ACHIEVEMENTS)
+                               achievements=ACHIEVEMENTS, ronovo=ronovo_sso.enabled(), questions=QUESTIONS)
 
     @app.get("/api/random-name")
     def api_random_name():
@@ -233,13 +247,15 @@ def create_app() -> Flask:
     @app.post("/api/register")
     def api_register():
         username, password = credentials()
+        body = json_body()
         try:
-            user_id = accounts.register(username, password)
+            user_id = accounts.register(username, password, str(body.get("question", "")), str(body.get("answer", "")))
         except AccountError as error:
             return jsonify(error=str(error)), 400
         log_in(user_id, username)
         return jsonify(username=username)
 
+    # Accounts made before security questions are asked to set one straight after logging in.
     @app.post("/api/login")
     def api_login():
         username, password = credentials()
@@ -249,7 +265,35 @@ def create_app() -> Flask:
             return jsonify(error=str(error)), 401
         username = accounts.username(user_id)
         log_in(user_id, username)
-        return jsonify(username=username)
+        return jsonify(username=username, needs_security_question=not accounts.has_security_question(user_id))
+
+    @app.post("/api/security-question")
+    def api_security_question():
+        user_id = current_user()
+        if user_id is None:
+            return jsonify(error="Not logged in"), 401
+        body = json_body()
+        try:
+            accounts.set_security_question(user_id, str(body.get("question", "")), str(body.get("answer", "")))
+        except AccountError as error:
+            return jsonify(error=str(error)), 400
+        return jsonify(saved=True)
+
+    @app.post("/api/reset-question")
+    def api_reset_question():
+        username = str(json_body().get("username", "")).strip()
+        if not username:
+            return jsonify(error="Enter your username"), 400
+        return jsonify(question=accounts.security_question(username))
+
+    @app.post("/api/reset-password")
+    def api_reset_password():
+        username, password = credentials()
+        try:
+            accounts.reset_password(username, str(json_body().get("answer", "")), password)
+        except AccountError as error:
+            return jsonify(error=str(error)), 400
+        return jsonify(reset=True)
 
     @app.post("/api/logout")
     def api_logout():

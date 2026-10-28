@@ -1,10 +1,14 @@
 import json
 import re
+import secrets
 import sqlite3
+import time
 from contextlib import contextmanager
 from typing import Dict, Iterable, Optional
 
 from werkzeug.security import check_password_hash, generate_password_hash
+
+import security_questions
 
 USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_-]{3,20}$")
 MIN_PASSWORD_LENGTH = 8
@@ -31,18 +35,37 @@ CREATE TABLE IF NOT EXISTS records (
     devoured TEXT NOT NULL
 );
 """
+# Added after the first release, so they are created on older databases as well
+USER_COLUMNS = {
+    "ronovo_sub": "TEXT",
+    "security_question": "TEXT",
+    "security_answer_hash": "TEXT",
+    "reset_failures": "INTEGER NOT NULL DEFAULT 0",
+    "reset_locked_until": "REAL NOT NULL DEFAULT 0",
+}
 
 
 class AccountError(Exception):
     pass
 
 
+def check_password(password: str):
+    if len(password) < MIN_PASSWORD_LENGTH:
+        raise AccountError(f"Passwords need at least {MIN_PASSWORD_LENGTH} characters")
+
+
 class Accounts:
-    def __init__(self, path: str):
+    def __init__(self, path: str, secret_key: str):
         self.path = path
+        self.secret_key = secret_key.encode("utf-8")
         with self._db() as db:
             db.execute("PRAGMA journal_mode=WAL")
             db.executescript(SCHEMA)
+            existing = {row[1] for row in db.execute("PRAGMA table_info(users)")}
+            for column, kind in USER_COLUMNS.items():
+                if column not in existing:
+                    db.execute(f"ALTER TABLE users ADD COLUMN {column} {kind}")
+            db.execute("CREATE UNIQUE INDEX IF NOT EXISTS users_ronovo_sub ON users (ronovo_sub)")
 
     @contextmanager
     def _db(self):
@@ -53,15 +76,20 @@ class Accounts:
         finally:
             db.close()
 
-    def register(self, username: str, password: str) -> int:
+    def register(self, username: str, password: str, question: str, answer: str) -> int:
         if not USERNAME_PATTERN.match(username):
             raise AccountError("Usernames are 3-20 letters, numbers, _ or -")
-        if len(password) < MIN_PASSWORD_LENGTH:
-            raise AccountError(f"Passwords need at least {MIN_PASSWORD_LENGTH} characters")
+        check_password(password)
+        problem = security_questions.problem(question, answer)
+        if problem:
+            raise AccountError(problem)
         try:
             with self._db() as db:
-                cursor = db.execute("INSERT INTO users (username, password_hash) VALUES (?, ?)",
-                                    (username, generate_password_hash(password)))
+                cursor = db.execute(
+                    """INSERT INTO users (username, password_hash, security_question, security_answer_hash)
+                       VALUES (?, ?, ?, ?)""",
+                    (username, generate_password_hash(password), question,
+                     generate_password_hash(security_questions.normalize_answer(answer))))
                 return cursor.lastrowid
         except sqlite3.IntegrityError:
             raise AccountError("That username is taken")
@@ -80,6 +108,68 @@ class Accounts:
         with self._db() as db:
             row = db.execute("SELECT username FROM users WHERE id = ?", (user_id,)).fetchone()
         return row[0] if row else None
+
+    def ronovo_user(self, sub: str, username: str) -> int:
+        """The account tied to a Ronovo account, created on its first login and named after it. Its password is
+        random and never shown, so logging in with Ronovo is the only way in."""
+        base = username if USERNAME_PATTERN.match(username) else "player"
+        n = 1
+        while True:
+            with self._db() as db:
+                row = db.execute("SELECT id FROM users WHERE ronovo_sub = ?", (sub,)).fetchone()
+            if row:
+                return row[0]
+            name = base if n == 1 else f"{base[:20 - len(str(n))]}{n}"
+            try:
+                with self._db() as db:
+                    return db.execute("INSERT INTO users (username, password_hash, ronovo_sub) VALUES (?, ?, ?)",
+                                      (name, generate_password_hash(secrets.token_urlsafe(32)), sub)).lastrowid
+            except sqlite3.IntegrityError:
+                # The name is taken, or a second login for this Ronovo account got there first
+                n += 1
+
+    def has_security_question(self, user_id: int) -> bool:
+        with self._db() as db:
+            row = db.execute("SELECT security_answer_hash FROM users WHERE id = ?", (user_id,)).fetchone()
+        return bool(row and row[0])
+
+    def set_security_question(self, user_id: int, question: str, answer: str):
+        problem = security_questions.problem(question, answer)
+        if problem:
+            raise AccountError(problem)
+        with self._db() as db:
+            db.execute("UPDATE users SET security_question = ?, security_answer_hash = ? WHERE id = ?",
+                       (question, generate_password_hash(security_questions.normalize_answer(answer)), user_id))
+
+    def security_question(self, username: str) -> str:
+        with self._db() as db:
+            row = db.execute("SELECT security_question FROM users WHERE username = ? AND security_answer_hash IS NOT NULL",
+                             (username,)).fetchone()
+        return row[0] if row else security_questions.stand_in_question(username, self.secret_key)
+
+    def reset_password(self, username: str, answer: str, new_password: str):
+        """Sets a new password when the security answer is right. Too many wrong answers lock resets for a while."""
+        check_password(new_password)
+        with self._db() as db:
+            row = db.execute("""SELECT id, security_answer_hash, reset_failures, reset_locked_until FROM users
+                                WHERE username = ? AND security_answer_hash IS NOT NULL""", (username,)).fetchone()
+        if row is None:
+            check_password_hash(DUMMY_HASH, answer)
+            raise AccountError("That answer is wrong")
+        user_id, answer_hash, failures, locked_until = row
+        if time.time() < locked_until:
+            raise AccountError("Too many wrong answers. Try again in 15 minutes.")
+        if not check_password_hash(answer_hash, security_questions.normalize_answer(answer)):
+            failures += 1
+            locked = failures >= security_questions.MAX_RESET_FAILURES
+            with self._db() as db:
+                db.execute("UPDATE users SET reset_failures = ?, reset_locked_until = ? WHERE id = ?",
+                           (0 if locked else failures,
+                            time.time() + security_questions.RESET_LOCK_SECONDS if locked else 0, user_id))
+            raise AccountError("That answer is wrong")
+        with self._db() as db:
+            db.execute("UPDATE users SET password_hash = ?, reset_failures = 0, reset_locked_until = 0 WHERE id = ?",
+                       (generate_password_hash(new_password), user_id))
 
     def store_save(self, user_id: int, save: Dict):
         """Keep the newer copy when a save with this name is already stored"""
