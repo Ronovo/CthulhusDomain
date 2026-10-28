@@ -17,18 +17,18 @@ class UpgradeManager:
         self._initialize_upgrades()
     
     def _initialize_upgrades(self):
-        # Base costs for each resource (proportional to their production)
+        # Base costs for each resource; they grow faster than production, so later tiers take longer
         resource_base_costs = {
-            "cultists": 100,  # Base production: 1
-            "ancient_tomes": 500,  # Base production: 5
-            "eldritch_artifacts": 1500,  # Base production: 15
-            "sacrifices": 5000,  # Base production: 50
-            "dark_rituals": 20000,  # Base production: 200
-            "cosmic_energy": 75000,  # Base production: 750
-            "elder_signs": 300000,  # Base production: 3000
-            "dimensional_gates": 1000000,  # Base production: 10000
-            "star_spawn": 5000000,  # Base production: 50000
-            "great_old_ones": 20000000,  # Base production: 200000
+            "cultists": 50,  # Base production: 1
+            "ancient_tomes": 600,  # Base production: 5
+            "eldritch_artifacts": 4000,  # Base production: 15
+            "sacrifices": 30000,  # Base production: 50
+            "dark_rituals": 150000,  # Base production: 200
+            "cosmic_energy": 800000,  # Base production: 750
+            "elder_signs": 5000000,  # Base production: 3000
+            "dimensional_gates": 25000000,  # Base production: 10000
+            "star_spawn": 120000000,  # Base production: 50000
+            "great_old_ones": 250000000,  # Base production: 200000
         }
 
         # Resource-specific upgrade names and descriptions
@@ -122,7 +122,7 @@ class UpgradeManager:
             self.upgrades[f"{resource}_speed_3x"] = Upgrade(
                 name=upgrades["speed_3x"][0],
                 description=upgrades["speed_3x"][1],
-                cost=base_cost * 2.0,
+                cost=base_cost * 3.0,
                 multiplier=3.0,
                 upgrade_type='speed',
                 resource=resource.lower()
@@ -131,7 +131,7 @@ class UpgradeManager:
             self.upgrades[f"{resource}_speed_5x"] = Upgrade(
                 name=upgrades["speed_5x"][0],
                 description=upgrades["speed_5x"][1],
-                cost=base_cost * 4.0,
+                cost=base_cost * 10.0,
                 multiplier=5.0,
                 upgrade_type='speed',
                 resource=resource.lower()
@@ -141,7 +141,7 @@ class UpgradeManager:
             self.upgrades[f"{resource}_prod_2x"] = Upgrade(
                 name=upgrades["prod_2x"][0],
                 description=upgrades["prod_2x"][1],
-                cost=base_cost * 1.5,
+                cost=base_cost * 0.3,
                 multiplier=2.0,
                 upgrade_type='production',
                 resource=resource.lower()
@@ -150,7 +150,7 @@ class UpgradeManager:
             self.upgrades[f"{resource}_prod_5x"] = Upgrade(
                 name=upgrades["prod_5x"][0],
                 description=upgrades["prod_5x"][1],
-                cost=base_cost * 5.0,
+                cost=base_cost * 6.0,
                 multiplier=5.0,
                 upgrade_type='production',
                 resource=resource.lower()

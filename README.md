@@ -1,12 +1,15 @@
-# Cthulhu's Dominion
+# Dead But Dreaming
 
-A Lovecraftian idle game where you play as a Great Old One, commanding cultists to gather eldritch resources and expand your influence across multiple worlds.
+*In his house at R'lyeh dead Cthulhu waits dreaming.*
+
+You are an Old One, inert and buried deep beneath the earth. You cannot move and you cannot wake, but you can dream, and your dreams reach the surface. Cultists answer them. Tomes are written, sacrifices are made, rituals are performed and gates are opened, and every scrap of sanity the world loses flows down to you. Gather enough and you will devour the world and be reborn. Then Azathoth spins up a fresh worldline, and the dreaming begins again.
+
+It runs in the browser on a Python/Flask server.
 
 ## Features
 - Choose from 9 different Great Old Ones to play as (or create your own name)
 - 10 different eldritch resources to collect and manage
 - Animated progress bars for resource gathering
-- Intelligent UI that adapts to resource speed (solid bars for fast resources)
 - Manager upgrades to automate resource collection
 - Two types of upgrades per resource:
   - Speed upgrades (2x, 3x, 5x)
@@ -14,98 +17,49 @@ A Lovecraftian idle game where you play as a Great Old One, commanding cultists 
 - Multiple world system:
   - Complete all upgrades to devour the current world
   - Choose to let Azathoth reset the world for a new run
-  - Track how many worlds you've destroyed
-- Automatic save system
-- Load previous games
+  - Your save counts how many worlds you've destroyed
+- Saves are kept in your browser, and the game catches up on the time it was closed
+
+## How it works
+The game logic is Python. The browser keeps the save and shows the game; it doesn't run any of the rules.
+
+1. The browser stores each save as JSON in `localStorage`, including when it was last saved.
+2. About four times a second, and whenever you click, the browser sends its save and your clicks to `POST /api/play`.
+3. Flask rebuilds the `Game` from the save, advances it by the time since `last_saved`, applies the clicks, and sends back the new save plus what to display. Time spent with the game closed is covered by that same step: resources with a manager keep producing, and a resource you clicked by hand finishes its one cycle.
 
 ## Project Structure
 ```
-Idle Vibes/
-├── Game_Logic/           # Main game source code
-│   ├── main.py          # Main game entry point
-│   ├── menu.py          # Menu system
-│   └── upgrades.py      # Upgrade management
-└── Install_Files/       # Build and setup files
-    ├── build.bat        # Windows build script
-    ├── build_mac.command # Mac build script
-    ├── build.spec       # PyInstaller spec file
-    ├── generate_icon.bat # Icon generation script
-    ├── icon.py          # Icon generation code
-    ├── setup_fonts.py   # Font setup script
-    └── requirements.txt # Python dependencies
+Dead-But-Dreaming/
+├── Game_Logic/
+│   ├── main.py          # Game state, resources, production and saves
+│   ├── upgrades.py      # Upgrade management
+│   ├── menu.py          # Great Old One names
+│   ├── webapp.py        # Flask app and API
+│   ├── templates/       # Page markup
+│   └── static/          # CSS, display script, font, icon
+├── docker/git-sync.sh   # Pulls the latest code when the container starts
+├── Dockerfile
+├── docker-compose.yml   # Local testing
+└── requirements.txt
 ```
 
-## Requirements
-- Python 3.8+
-- Pygame 2.5.2
-- PyInstaller (for building executables)
-- Xcode Command Line Tools (for Mac builds)
-- Pillow (for icon generation)
+## Running
 
-## Installation
-
-### Running from Source
-1. Clone this repository
-2. Install Pygame:
+### From source
+Requires Python 3.10+.
 ```bash
-python -m pip install --index-url https://pypi.org/simple/ --no-deps pygame
+pip install -r requirements.txt
+python Game_Logic/webapp.py
 ```
-3. Run the game:
+Then open http://localhost:5000.
+
+### With Docker
 ```bash
-python Game_Logic/main.py
+docker compose up -d --build
 ```
+Then open http://localhost:8005. The local compose file runs your working copy as-is.
 
-### Building Executables
-
-#### Windows
-1. Navigate to the Install_Files directory
-2. Run the build script:
-```bash
-build.bat
-```
-3. The executable will be created in the `dist` folder as `CthulhusDominion.exe`
-
-#### Mac
-1. Install Xcode Command Line Tools if not already installed:
-```bash
-xcode-select --install
-```
-
-2. Navigate to the Install_Files directory:
-```bash
-cd Install_Files
-```
-
-3. Make the build script executable:
-```bash
-chmod +x build_mac.command
-```
-
-4. Run the build script:
-```bash
-./build_mac.command
-```
-
-5. The DMG will be created in the `dist` folder as `CthulhusDominion.dmg`
-
-Note: The build process will automatically:
-- Install required packages (Pillow, PyInstaller, Pygame)
-- Download the required Crimson Text font
-- Generate the game icon
-- Create the executable/DMG
-
-### Troubleshooting
-If you encounter any issues:
-
-1. Make sure all prerequisites are installed
-2. For Mac builds, verify Xcode Command Line Tools are installed:
-```bash
-xcode-select --install
-```
-3. Check that you have write permissions in the directory
-4. If the build fails, try cleaning the build directories:
-   - Windows: Delete the `build` and `dist` folders
-   - Mac: Run `rm -rf build dist` before rebuilding
+When `REPO_URL` is set (the image sets it to this repository), the container updates itself from GitHub every time it starts: the first start fetches `main` over the code baked into the image, and later starts pull again. If GitHub can't be reached it starts with the code it already has. To pick up new commits on a running container, restart it.
 
 ## How to Play
 - Click on resources to start gathering them
@@ -113,11 +67,8 @@ xcode-select --install
 - Buy upgrades to increase speed and production
 - Complete all upgrades to devour the world
 - Choose to continue in infinite mode or reset for a new world
-- Track your progress with the Worlds Destroyed counter
 
 ## Game Mechanics
-- Resources with managers automatically start producing when loaded
-- Fast resources (first 5) show solid progress bars when speed exceeds 6x
+- Resources with managers produce automatically, including while the game is closed
 - Each resource has 5 upgrades to discover
-- Managers continue production automatically
-- Auto-save every 60 seconds 
+- The game saves to your browser continuously while you play

@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Dead But Dreaming</title>
+    <link rel="icon" href="{{ url_for('static', filename='favicon.png') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/play.js') }}" defer></script>
+</head>
+<body data-random-name-url="{{ url_for('api_random_name') }}"
+      data-new-game-url="{{ url_for('api_new_game') }}"
+      data-play-url="{{ url_for('api_play') }}">
+    <div class="style-bar">
+        <label for="style-picker">Style</label>
+        <select id="style-picker">
+            {% for name in great_old_ones %}
+            <option value="{{ name|lower }}">{{ name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <section id="main-menu" class="screen menu">
+        <h1 class="title">Dead But Dreaming</h1>
+        <button type="button" class="menu-button" id="new-game">New Game</button>
+        <button type="button" class="menu-button" id="load-game">Load Game</button>
+    </section>
+
+    <section id="name-entry" class="screen menu" hidden>
+        <h1 class="title">Name Your Great Old One</h1>
+        <form id="name-form" class="menu-form">
+            <input id="name-input" class="name-input" maxlength="{{ max_name_length }}" autocomplete="off" aria-label="Name">
+            <button type="button" class="menu-button" id="random-name">Random Name</button>
+            <button type="submit" class="menu-button">Confirm</button>
+            <button type="button" class="menu-button back">Back to Menu</button>
+        </form>
+        <p id="name-error" class="error" role="alert"></p>
+    </section>
+
+    <section id="load-list" class="screen menu" hidden>
+        <h1 class="title">Load Game</h1>
+        <p id="no-saves" class="menu-text">No saved games found</p>
+        <div id="saves" class="menu-form"></div>
+        <button type="button" class="menu-button back">Back to Menu</button>
+    </section>
+
+    <section id="game" class="screen game" hidden>
+        <header class="game-header">
+            <h1 id="player-name" class="player-name"></h1>
+            <p id="sanity" class="sanity number"></p>
+        </header>
+        <div class="board">
+            <div id="resources" class="resources"></div>
+            <aside class="upgrades">
+                <h2>Upgrades</h2>
+                <div class="upgrade-filters">
+                    <select id="type-filter" aria-label="Upgrade type">
+                        <option value="">All types</option>
+                        <option value="speed">Speed</option>
+                        <option value="production">Production</option>
+                    </select>
+                    <select id="resource-filter" aria-label="Resource">
+                        <option value="">All resources</option>
+                    </select>
+                </div>
+                <div class="upgrade-list">
+                    <section id="speed-upgrades" class="upgrade-group">
+                        <h3>Speed</h3>
+                        <div class="upgrade-items"></div>
+                    </section>
+                    <section id="production-upgrades" class="upgrade-group">
+                        <h3>Production</h3>
+                        <div class="upgrade-items"></div>
+                    </section>
+                    <p id="no-upgrades" class="upgrade-desc" hidden>No upgrades match</p>
+                </div>
+            </aside>
+        </div>
+    </section>
+
+    <div id="confirm" class="modal" hidden>
+        <div class="modal-box">
+            <p id="confirm-message"></p>
+            <button type="button" class="menu-button" id="confirm-yes">Yes</button>
+            <button type="button" class="menu-button" id="confirm-no">No</button>
+        </div>
+    </div>
+
+    <div id="world-end" class="modal" hidden>
+        <div class="modal-box">
+            <p>Congratulations! Your Great Old One has devoured this world.</p>
+            <p>Would you like Azathoth to devour this worldline and spin you up another one?</p>
+            <div class="choices">
+                <button type="button" class="choice yes" id="world-end-yes">Yes</button>
+                <button type="button" class="choice no" id="world-end-no">No</button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

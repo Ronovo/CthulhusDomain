@@ -1,0 +1,665 @@
+@font-face {
+    font-family: "Crimson Text";
+    src: url("../fonts/CrimsonText-Regular.ttf") format("truetype");
+    font-display: swap;
+}
+
+/* Styles: one per Great Old One, chosen with the style picker. Cthulhu is the default. */
+
+:root {
+    --bg: #000;
+    --surface: #000;
+    --text: #fff;
+    --title: #800080;
+    --title-shadow: none;
+    --accent: #0f0;
+    --good: #0f0;
+    --bad: #f00;
+    --btn-end: #000;
+    --muted: #646464;
+    --border: #fff;
+    --panel: #000032;
+    --res: linear-gradient(rgb(40, 20, 60), rgb(60, 30, 90));
+    --locked: linear-gradient(rgb(40, 20, 30), rgb(60, 30, 45));
+    --locked-ok: linear-gradient(rgb(20, 40, 30), rgb(30, 60, 45));
+    --bar: linear-gradient(rgb(0, 200, 0), rgb(0, 255, 0));
+    --bar-glow: rgba(0, 255, 0, 0.3);
+}
+
+/* The Black Pharaoh: tomb gold and lapis */
+:root[data-style="nyarlathotep"] {
+    --bg: radial-gradient(ellipse at top, #5a4524 0%, #33281a 70%);
+    --surface: #33281a;
+    --text: #f6ebcf;
+    --title: #e0b84a;
+    --title-shadow: 0 0 14px rgba(224, 184, 74, 0.35);
+    --accent: #6b9bff;
+    --good: #2f5fd0;
+    --bad: #9e2222;
+    --btn-end: #2a2114;
+    --muted: #7d6f50;
+    --border: #e0b84a;
+    --panel: linear-gradient(#142650, #0b1730);
+    --res: linear-gradient(#3a2d14, #54401a);
+    --locked: linear-gradient(#2a2115, #362b1c);
+    --locked-ok: linear-gradient(#15284f, #1d3870);
+    --bar: linear-gradient(#c9961a, #ffd54f);
+    --bar-glow: rgba(255, 213, 79, 0.4);
+}
+
+/* The Gate and the Key: deep space with drifting nebulae */
+:root[data-style="yog-sothoth"] {
+    --bg: radial-gradient(circle at 20% 10%, #2a1050 0%, transparent 40%),
+        radial-gradient(circle at 85% 80%, #08324a 0%, transparent 45%), #0d0820;
+    --surface: #150e30;
+    --text: #e9e4ff;
+    --title: #b388ff;
+    --title-shadow: 0 0 16px rgba(179, 136, 255, 0.45);
+    --accent: #4dd0e1;
+    --good: #00acc1;
+    --bad: #d81b60;
+    --btn-end: #0d0820;
+    --muted: #5c5478;
+    --border: #9fa8ff;
+    --panel: linear-gradient(160deg, #140a33, #061a2a);
+    --res: linear-gradient(90deg, #1b1040, #0c2a44);
+    --locked: linear-gradient(#120c22, #1a1230);
+    --locked-ok: linear-gradient(#0a2430, #0f3644);
+    --bar: linear-gradient(90deg, #4dd0e1, #b388ff, #ff80ab);
+    --bar-glow: rgba(179, 136, 255, 0.45);
+}
+
+/* The Black Goat of the Woods: moss and old blood */
+:root[data-style="shub-niggurath"] {
+    --bg: linear-gradient(#142214, #0b140b 70%);
+    --surface: #101c10;
+    --text: #e8f0dc;
+    --title: #9ccc65;
+    --title-shadow: 0 0 14px rgba(156, 204, 101, 0.35);
+    --accent: #c5e1a5;
+    --good: #5d9632;
+    --bad: #b71c1c;
+    --btn-end: #0a120a;
+    --muted: #5f7050;
+    --border: #9bbf6a;
+    --panel: #18301a;
+    --res: linear-gradient(#1d3a1d, #2d572d);
+    --locked: linear-gradient(#1c1a12, #26231a);
+    --locked-ok: linear-gradient(#22401e, #30602a);
+    --bar: linear-gradient(#7cb342, #c5e1a5);
+    --bar-glow: rgba(197, 225, 165, 0.35);
+}
+
+/* The King in Yellow: a yellow haze over faded ochre */
+:root[data-style="hastur"] {
+    --bg: radial-gradient(ellipse at top, #3a3213 0%, #1c190f 60%);
+    --surface: #221e12;
+    --text: #f7efd2;
+    --title: #ffd23f;
+    --title-shadow: 0 0 16px rgba(255, 210, 63, 0.4);
+    --accent: #ffe066;
+    --good: #c9a227;
+    --bad: #a12a2a;
+    --btn-end: #15130b;
+    --muted: #857a5a;
+    --border: #e3c766;
+    --panel: linear-gradient(#2e2914, #1f1b0e);
+    --res: linear-gradient(#3d3514, #5a4d1c);
+    --locked: linear-gradient(#211e15, #2b271c);
+    --locked-ok: linear-gradient(#4a3f16, #6a5a1e);
+    --bar: linear-gradient(#d4a72c, #ffe680);
+    --bar-glow: rgba(255, 224, 102, 0.4);
+}
+
+/* The deep: sea blue, teal glow, coral */
+:root[data-style="dagon"] {
+    --bg: linear-gradient(#0a2a38, #04141c 80%);
+    --surface: #082430;
+    --text: #ddf6f3;
+    --title: #2fd4c2;
+    --title-shadow: 0 0 14px rgba(47, 212, 194, 0.35);
+    --accent: #64ffda;
+    --good: #00897b;
+    --bad: #e0644c;
+    --btn-end: #04161e;
+    --muted: #4a6c73;
+    --border: #6fd0dc;
+    --panel: linear-gradient(#0a3444, #062330);
+    --res: linear-gradient(#0a4152, #106277);
+    --locked: linear-gradient(#0c1d24, #112830);
+    --locked-ok: linear-gradient(#0a4a45, #0f6560);
+    --bar: linear-gradient(#1de9b6, #64ffda);
+    --bar-glow: rgba(100, 255, 218, 0.35);
+}
+
+/* The Father of Serpents: desert copper and turquoise, with scaled resources */
+:root[data-style="yig"] {
+    --bg: linear-gradient(#24140c, #140b06 75%);
+    --surface: #1e110a;
+    --text: #f7e9d7;
+    --title: #e08848;
+    --title-shadow: 0 0 14px rgba(224, 136, 72, 0.35);
+    --accent: #4fd8c6;
+    --good: #1f8f82;
+    --bad: #b33a22;
+    --btn-end: #140b06;
+    --muted: #7a604c;
+    --border: #d08a4e;
+    --panel: linear-gradient(#31190e, #1f1009);
+    --res: repeating-linear-gradient(135deg, #43241a 0 10px, #502c1f 10px 20px);
+    --locked: linear-gradient(#22170f, #2c1e14);
+    --locked-ok: linear-gradient(#123832, #1a524a);
+    --bar: linear-gradient(#26a69a, #64e0d0);
+    --bar-glow: rgba(64, 201, 184, 0.35);
+}
+
+/* The sleeper of N'kai: slate, bone and bronze */
+:root[data-style="tsathoggua"] {
+    --bg: #1b1a18;
+    --surface: #22211e;
+    --text: #ece6d6;
+    --title: #ece6d6;
+    --title-shadow: 0 0 14px rgba(224, 181, 110, 0.4);
+    --accent: #e0b56e;
+    --good: #a8823f;
+    --bad: #8a3a3a;
+    --btn-end: #151412;
+    --muted: #7d776b;
+    --border: #b0a890;
+    --panel: #2a2824;
+    --res: linear-gradient(#34312b, #454036);
+    --locked: linear-gradient(#201f1c, #282623);
+    --locked-ok: linear-gradient(#3a3122, #4d402a);
+    --bar: linear-gradient(#b8893c, #f0c879);
+    --bar-glow: rgba(240, 200, 121, 0.35);
+}
+
+/* The volcano of Mu: lava glow over ash, and whatever its gaze turned to stone */
+:root[data-style="ghatanothoa"] {
+    --bg: radial-gradient(ellipse at bottom, #4a1404 0%, #1a0f0b 55%, #120a07 100%);
+    --surface: #1a0f0b;
+    --text: #f3e6dc;
+    --title: #ff7a1a;
+    --title-shadow: 0 0 16px rgba(255, 109, 0, 0.45);
+    --accent: #ffb460;
+    --good: #e65100;
+    --bad: #6e6e6e;
+    --btn-end: #120a07;
+    --muted: #6b5f58;
+    --border: #b08070;
+    --panel: linear-gradient(#2a1710, #180d09);
+    --res: linear-gradient(#3a2219, #552e1f);
+    --locked: linear-gradient(#1f1c1a, #292523);
+    --locked-ok: linear-gradient(#4a200a, #6a300e);
+    --bar: linear-gradient(#ff3d00, #ffb460);
+    --bar-glow: rgba(255, 109, 0, 0.45);
+}
+
+/* Layout standards: labels sit left, numbers sit right with fixed-width digits so they line up
+   down a column. Text sizes 48 / 32 / 28 / 22 / 20 / 17; spacing in steps of 8 / 12 / 16 / 24. */
+
+* {
+    box-sizing: border-box;
+}
+
+html {
+    background: var(--surface);
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    background-attachment: fixed;
+    color: var(--text);
+    font-family: "Crimson Text", Georgia, serif;
+}
+
+[hidden] {
+    display: none !important;
+}
+
+button {
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+}
+
+p {
+    margin: 0;
+}
+
+select {
+    padding: 4px 8px;
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    font: inherit;
+    font-size: 18px;
+}
+
+.number {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.style-bar {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+    height: 48px;
+    padding: 12px 16px 0;
+    font-size: 18px;
+}
+
+/* Menus */
+
+.menu {
+    min-height: calc(100vh - 48px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    padding: 32px 16px;
+    text-align: center;
+}
+
+.title {
+    color: var(--title);
+    text-shadow: var(--title-shadow);
+    font-size: 48px;
+    font-weight: normal;
+    margin: 0 0 32px;
+}
+
+.menu-form {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+}
+
+.menu-button {
+    background: none;
+    border: none;
+    font-size: 48px;
+    padding: 4px 16px;
+}
+
+.menu-button:hover,
+.menu-button:focus-visible {
+    color: var(--accent);
+    outline: none;
+}
+
+.menu-text {
+    font-size: 48px;
+}
+
+.save-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    width: min(100%, 560px);
+}
+
+.delete-button {
+    flex-shrink: 0;
+    padding: 4px 12px;
+    background: none;
+    border: 1px solid var(--muted);
+    color: var(--muted);
+    font-size: 20px;
+}
+
+.delete-button:hover,
+.delete-button:focus-visible {
+    border-color: var(--bad);
+    color: var(--bad);
+    outline: none;
+}
+
+.name-input {
+    background: none;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+    font: inherit;
+    font-size: 48px;
+    text-align: center;
+    width: min(100%, 12em);
+    margin-bottom: 16px;
+}
+
+.name-input:focus {
+    outline: none;
+    border-bottom-color: var(--accent);
+}
+
+.error {
+    color: var(--bad);
+    font-size: 32px;
+    min-height: 1.2em;
+}
+
+/* Game */
+
+.game {
+    max-width: 1320px;
+    margin: 0 auto;
+    padding: 8px 16px 24px;
+}
+
+.game-header {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.player-name {
+    justify-self: start;
+    color: var(--title);
+    text-shadow: var(--title-shadow);
+    font-size: 32px;
+    font-weight: normal;
+    margin: 0;
+    padding: 0;
+}
+
+.sanity {
+    font-size: 32px;
+}
+
+.board {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 400px;
+    align-items: start;
+    gap: 24px;
+}
+
+.resources {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.resource-row {
+    display: grid;
+    grid-template-columns: minmax(440px, 1fr) 340px;
+    gap: 16px;
+}
+
+.resource,
+.manager {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    height: 56px;
+    padding: 0 16px;
+    border: 1px solid var(--border);
+    box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.4);
+    overflow: hidden;
+    white-space: nowrap;
+    text-align: left;
+}
+
+.resource-name {
+    font-size: 28px;
+}
+
+.resource-detail,
+.manager-cost {
+    font-size: 20px;
+}
+
+.resource.unlocked {
+    background: var(--res);
+}
+
+.resource.locked {
+    background: var(--locked);
+    border-color: var(--muted);
+    color: var(--muted);
+}
+
+.resource.locked.affordable {
+    background: var(--locked-ok);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.progress {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 4px;
+    height: 8px;
+    pointer-events: none;
+}
+
+.progress-fill {
+    display: block;
+    width: 100%;
+    height: 100%;
+    transform: scaleX(0);
+    transform-origin: left;
+    background: var(--bar);
+    box-shadow: 0 0 6px var(--bar-glow);
+}
+
+@keyframes fill-bar {
+    from {
+        transform: scaleX(0);
+    }
+
+    to {
+        transform: scaleX(1);
+    }
+}
+
+.manager {
+    font-size: 22px;
+    text-shadow: 0 0 3px #000;
+}
+
+.manager.affordable,
+.manager.hired {
+    background: linear-gradient(var(--good), var(--btn-end));
+}
+
+.manager.unaffordable {
+    background: linear-gradient(var(--bad), var(--btn-end));
+}
+
+.manager.hired .manager-cost {
+    color: var(--accent);
+}
+
+.upgrades {
+    display: flex;
+    flex-direction: column;
+    height: 700px;
+    background: var(--panel);
+    border: 2px solid var(--border);
+    box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.4);
+}
+
+.upgrades h2 {
+    font-size: 32px;
+    font-weight: normal;
+    text-align: center;
+    margin: 8px 0 12px;
+}
+
+.upgrade-filters {
+    display: flex;
+    gap: 8px;
+    padding: 0 12px 12px;
+}
+
+.upgrade-filters select {
+    flex: 1;
+    min-width: 0;
+}
+
+.upgrade-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 12px 12px;
+}
+
+.upgrade-group h3 {
+    font-size: 24px;
+    font-weight: normal;
+    margin: 12px 0 8px;
+    border-bottom: 1px solid var(--muted);
+}
+
+.upgrade-items {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.upgrade-button {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--muted);
+    text-align: left;
+    text-shadow: 0 0 3px #000;
+}
+
+.upgrade-button.affordable {
+    background: linear-gradient(var(--good), var(--btn-end));
+}
+
+.upgrade-button.unaffordable {
+    background: linear-gradient(var(--bad), var(--btn-end));
+}
+
+.upgrade-top {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 20px;
+}
+
+.upgrade-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.upgrade-detail {
+    font-size: 17px;
+    opacity: 0.85;
+}
+
+.upgrade-desc {
+    font-size: 20px;
+    text-align: center;
+    margin: 12px 0;
+}
+
+/* Popups */
+
+.modal {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.modal-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    max-width: 600px;
+    padding: 24px;
+    background: var(--surface);
+    border: 2px solid var(--border);
+    text-align: center;
+    font-size: 28px;
+}
+
+.choices {
+    display: flex;
+    gap: 96px;
+    margin-top: 8px;
+}
+
+.choice {
+    width: 100px;
+    height: 40px;
+    border: none;
+    text-shadow: 0 0 3px #000;
+}
+
+.choice.yes {
+    background: var(--good);
+}
+
+.choice.no {
+    background: var(--bad);
+}
+
+@media (max-width: 1100px) {
+    .board {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .upgrades {
+        height: 420px;
+    }
+}
+
+@media (max-width: 860px) {
+    .resource-row {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 4px;
+    }
+}
+
+@media (max-width: 640px) {
+    .game-header {
+        grid-template-columns: 1fr;
+    }
+
+    .resource-name,
+    .player-name,
+    .sanity {
+        font-size: 24px;
+    }
+
+    .manager {
+        font-size: 20px;
+    }
+
+    .title,
+    .menu-button,
+    .menu-text,
+    .name-input {
+        font-size: 36px;
+    }
+
+    .choices {
+        gap: 40px;
+    }
+}

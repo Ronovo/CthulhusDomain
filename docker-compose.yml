@@ -1,0 +1,11 @@
+name: dead-but-dreaming
+
+services:
+  dead-but-dreaming:
+    build: .
+    ports:
+      - "8005:8000"
+    environment:
+      # Empty so the container runs this working copy instead of pulling main from GitHub.
+      REPO_URL: ""
+    restart: unless-stopped
