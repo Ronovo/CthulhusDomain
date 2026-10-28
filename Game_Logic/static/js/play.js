@@ -41,12 +41,13 @@
         }
     }
 
-    async function request(url, body) {
+    async function request(url, body, timeoutMs = 0) {
         const options = body === undefined ? {} : {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
         };
+        if (timeoutMs) options.signal = AbortSignal.timeout(timeoutMs);
         const response = await fetch(url, options);
         if (!response.ok) {
             const data = await response.json().catch(() => ({}));
@@ -321,6 +322,8 @@
     // Bumped when a game stops, so a request still in flight can't write over a deleted save
     let session = 0;
     const BACKUP_MS = 30_000;
+    // Updates normally take well under 100 ms; one still waiting after this is stuck, so it is retried.
+    const TICK_TIMEOUT_MS = 2000;
     let lastBackup = 0;
 
     // A clicked button stays marked as pressed until the request carrying that click comes back.
@@ -337,6 +340,8 @@
         const actions = pending;
         pending = [];
         const backup = Boolean(account) && Date.now() - lastBackup >= BACKUP_MS;
+        let retryNow = false;
+        let resend = false;
         try {
             const data = await request(urls.playUrl, {
                 save,
@@ -344,7 +349,7 @@
                 achievements: readAchievements(),
                 devoured: readDevoured(),
                 backup,
-            });
+            }, TICK_TIMEOUT_MS);
             if (mySession !== session) return;
             if (backup) lastBackup = Date.now();
             save = data.save;
@@ -358,13 +363,23 @@
             }
         } catch (error) {
             console.error(error);
+            // A stalled or dropped connection, not an answer from the server: the clicks go out again.
+            // The server works from the save sent with each request, so resending can't apply them twice.
+            const timedOut = error.name === "TimeoutError";
+            resend = mySession === session && (timedOut || error instanceof TypeError);
+            if (resend) {
+                pending = actions.concat(pending);
+                retryNow = timedOut;
+            }
         } finally {
             if (mySession === session) busy = false;
-            for (const action of actions) {
-                if (action.button) delete action.button.dataset.pressed;
+            if (!resend) {
+                for (const action of actions) {
+                    if (action.button) delete action.button.dataset.pressed;
+                }
             }
         }
-        if (pending.length) tick();
+        if (retryNow || (pending.length && !resend)) tick();
     }
 
     function startGame(loaded) {
