@@ -2,7 +2,7 @@ FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    REPO_URL=https://github.com/Ronovo/CthulhusDomain.git \
+    REPO_URL=https://github.com/Ronovo/Dead-But-Dreaming.git \
     BUILD_CMD="pip install --no-cache-dir --user -q -r requirements.txt"
 
 WORKDIR /app
