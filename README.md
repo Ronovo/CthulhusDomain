@@ -126,3 +126,7 @@ When `REPO_URL` is set (the image sets it to this repository), the container upd
 - Resources with managers produce automatically, including while the game is closed; a resource you clicked by hand finishes its one cycle
 - Each resource has 5 upgrades to discover, and the upgrade list shows the next speed and next production upgrade of each unlocked resource
 - The game saves to your browser continuously while you play
+
+## License
+
+BSD 2-Clause. See [LICENSE](LICENSE).
