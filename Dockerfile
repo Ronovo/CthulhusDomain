@@ -11,7 +11,7 @@ WORKDIR /app
 COPY docker/git-sync.sh /usr/local/bin/git-sync
 RUN apt-get update && apt-get install -y --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/* \
-    && sed -i 's/\r$//' /usr/local/bin/git-sync && chmod +x /usr/local/bin/git-sync
+    && chmod +x /usr/local/bin/git-sync
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt gunicorn==23.0.0 \

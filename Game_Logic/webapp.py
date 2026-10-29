@@ -8,9 +8,9 @@ from flask import Flask, abort, jsonify, redirect, render_template, request, ses
 from ronovo_portfolio_auth import portfolio_sso
 from ronovo_portfolio_auth.security_questions import QUESTIONS
 
-from accounts import AccountError, Accounts
+from accounts import MAX_DELETED, AccountError, Accounts
 from achievements import ACHIEVEMENTS, PlayerRecord, new_achievements
-from main import DEFAULT_DIFFICULTY, DIFFICULTIES, Game
+from main import DEFAULT_DIFFICULTY, DIFFICULTIES, WORLD_ID_PATTERN, Game
 from menu import GREAT_OLD_ONES, MAX_NAME_LENGTH, random_name
 from signing import Signer
 
@@ -21,6 +21,8 @@ PORTFOLIO_CHOICE_SECONDS = 10 * 60
 # A tick carries the clicks since the last one, four times a second, so this is far more than a person can click.
 MAX_ACTIONS_PER_REQUEST = 200
 EDITED_SAVE = "This save was changed outside the game, so it can't be loaded."
+# What building a Game from a signed save that is missing fields or has the wrong types raises
+BAD_SAVE_ERRORS = (KeyError, TypeError, ValueError, AttributeError, OverflowError)
 PORTFOLIO_LOGIN_EXPIRED = "Log in with your portfolio account again."
 
 DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data"))
@@ -47,28 +49,36 @@ def load_secret_key() -> str:
         return f.read().strip()
 
 
+def is_world_id(value) -> bool:
+    return isinstance(value, str) and WORLD_ID_PATTERN.match(value) is not None
+
+
+def is_devour(entry) -> bool:
+    return (isinstance(entry, list) and len(entry) == 3 and is_world_id(entry[0])
+            and isinstance(entry[1], int) and not isinstance(entry[1], bool) and entry[1] > 0
+            and entry[2] in DIFFICULTIES)
+
+
 def read_player_record(record: Optional[Dict]) -> PlayerRecord:
-    """The achievements and devour tally from a verified record, keeping only valid entries. An unsigned or edited
+    """The achievements and devours from a verified record, keeping only valid entries. An unsigned or edited
     record counts as empty."""
     record = record or {}
-    earned = record.get("achievements", [])
-    if not isinstance(earned, list):
-        earned = []
-    devoured = record.get("devoured", {})
-    if not isinstance(devoured, dict):
-        devoured = {}
+    earned = record.get("achievements")
+    devours = record.get("devours")
     return PlayerRecord(
-        earned={achievement_id for achievement_id in earned
-                if isinstance(achievement_id, str) and achievement_id in ACHIEVEMENTS},
-        devoured={difficulty: count for difficulty, count in devoured.items()
-                  if difficulty in DIFFICULTIES and isinstance(count, int) and not isinstance(count, bool)
-                  and count >= 0},
+        earned={achievement_id for achievement_id in earned if isinstance(achievement_id, str)
+                and achievement_id in ACHIEVEMENTS} if isinstance(earned, list) else set(),
+        devours={tuple(entry) for entry in devours if is_devour(entry)} if isinstance(devours, list) else set(),
     )
 
 
 def save_rank(save: Dict) -> tuple:
     """How a stored copy of a world compares with another: more progress wins, then the newer one."""
     return Game(load_data=save).progress() + (save["last_saved"],)
+
+
+def save_started(save: Dict) -> float:
+    return Game(load_data=save).started_at()
 
 
 def progress_marker(game: Game) -> tuple:
@@ -154,9 +164,10 @@ def create_app() -> Flask:
         # so this app's login cookie needs a name of its own.
         SESSION_COOKIE_NAME="dead_but_dreaming_session",
         SESSION_COOKIE_SAMESITE="Lax",
+        SESSION_COOKIE_SECURE=os.environ.get("SECURE_COOKIES") == "1",
         MAX_CONTENT_LENGTH=1024 * 1024,
     )
-    accounts = Accounts(os.path.join(DATA_DIR, "accounts.db"), app.config["SECRET_KEY"])
+    accounts = Accounts(os.path.join(DATA_DIR, "accounts.db"))
 
     def current_user() -> Optional[int]:
         user_id = session.get("user_id")
@@ -184,7 +195,7 @@ def create_app() -> Flask:
         return body
 
     def signed_record(player: PlayerRecord) -> Dict:
-        return signer.sign({"achievements": sorted(player.earned), "devoured": player.devoured})
+        return signer.sign({"achievements": sorted(player.earned), "devours": sorted(player.devours)})
 
     def credentials():
         body = json_body()
@@ -238,10 +249,7 @@ def create_app() -> Flask:
         pending = portfolio_pending()
         if pending is None:
             return jsonify(error=PORTFOLIO_LOGIN_EXPIRED), 400
-        user_id = accounts.portfolio_user(pending["sub"], pending["username"])
-        username = accounts.username(user_id)
-        log_in(user_id, username)
-        return jsonify(username=username)
+        return logged_in(accounts.portfolio_user(pending["sub"], pending["username"]))
 
     @app.get("/api/random-name")
     def api_random_name():
@@ -266,10 +274,9 @@ def create_app() -> Flask:
             return jsonify(error=EDITED_SAVE), 400
         try:
             game = Game(load_data=save)
-        except (KeyError, TypeError, ValueError, AttributeError, OverflowError):
+        except BAD_SAVE_ERRORS:
             abort(400)
         game.advance(time.time())
-        worlds_before = game.worlds_destroyed
         progress_before = progress_marker(game)
 
         actions = {
@@ -285,8 +292,7 @@ def create_app() -> Flask:
                 actions[action["type"]](str(action.get("target", "")))
 
         player = read_player_record(signer.verify(body.get("record")))
-        player.devoured[game.difficulty] = (player.devoured.get(game.difficulty, 0)
-                                            + game.worlds_destroyed - worlds_before)
+        player.devours.update(game.devoured_now)
         new = [{"id": achievement_id,
                 "name": ACHIEVEMENTS[achievement_id].name,
                 "description": ACHIEVEMENTS[achievement_id].description}
@@ -298,8 +304,8 @@ def create_app() -> Flask:
         if body.get("backup") is True or new or progress_marker(game) != progress_before:
             user_id = current_user()
             if user_id is not None:
-                accounts.store_save(user_id, save, save_rank)
-                accounts.store_record(user_id, player.earned, player.devoured)
+                accounts.store_save(user_id, save, save_rank, save_started)
+                accounts.store_record(user_id, player.earned, player.devours)
 
         return jsonify(save=signer.sign(save), view=build_view(game), new_achievements=new,
                        record=signed_record(player))
@@ -318,8 +324,7 @@ def create_app() -> Flask:
             user_id = accounts.register(username, password, str(body.get("question", "")), str(body.get("answer", "")))
         except AccountError as error:
             return jsonify(error=str(error)), 400
-        log_in(user_id, username)
-        return jsonify(username=username)
+        return logged_in(user_id)
 
     @app.post("/api/login")
     def api_login():
@@ -335,7 +340,10 @@ def create_app() -> Flask:
         username = str(json_body().get("username", "")).strip()
         if not username:
             return jsonify(error="Enter your username"), 400
-        return jsonify(question=accounts.security_question(username))
+        try:
+            return jsonify(question=accounts.security_question(username))
+        except AccountError as error:
+            return jsonify(error=str(error)), 400
 
     @app.post("/api/reset-password")
     def api_reset_password():
@@ -351,15 +359,18 @@ def create_app() -> Flask:
         session.clear()
         return jsonify(username=None)
 
-    # Merges this browser's saves, achievements and devour tally into the account, and sends back
-    # everything the account now holds, plus the names of deleted worlds so the browser drops its copies.
-    # For saves with the same name the one further along wins.
+    # Applies the worlds this browser deleted, merges its saves, achievements and devours into the account, and
+    # sends back everything the account now holds, plus the ids of deleted worlds so the browser drops its copies.
+    # A browser that is closing asks for no reply.
     @app.post("/api/sync")
     def api_sync():
         user_id = current_user()
         if user_id is None:
             return jsonify(error="Not logged in"), 401
         body = json_body()
+        deleted = body.get("deleted", [])
+        if isinstance(deleted, list):
+            accounts.delete_worlds(user_id, [world_id for world_id in deleted[:MAX_DELETED] if is_world_id(world_id)])
         saves = body.get("saves", {})
         if isinstance(saves, dict):
             for save in saves.values():
@@ -367,24 +378,17 @@ def create_app() -> Flask:
                 if save is None:
                     continue
                 try:
-                    accounts.store_save(user_id, Game(load_data=save).save_game_state(), save_rank)
-                except (KeyError, TypeError, ValueError, AttributeError, OverflowError):
+                    accounts.store_save(user_id, Game(load_data=save).save_game_state(), save_rank, save_started)
+                except BAD_SAVE_ERRORS:
                     continue
         player = read_player_record(signer.verify(body.get("record")))
-        accounts.store_record(user_id, player.earned, player.devoured)
+        accounts.store_record(user_id, player.earned, player.devours)
+        if body.get("reply") is False:
+            return "", 204
         stored = accounts.load(user_id)
-        record = PlayerRecord(earned=set(stored["achievements"]), devoured=stored["devoured"])
+        record = PlayerRecord(earned=set(stored["achievements"]), devours=set(stored["devours"]))
         return jsonify(saves={name: signer.sign(save) for name, save in stored["saves"].items()},
                        deleted=stored["deleted"], record=signed_record(record))
-
-    @app.post("/api/delete-save")
-    def api_delete_save():
-        user_id = current_user()
-        if user_id is None:
-            return jsonify(error="Not logged in"), 401
-        body = json_body()
-        accounts.delete_save(user_id, str(body.get("name", "")))
-        return jsonify(deleted=True)
 
     return app
 

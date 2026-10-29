@@ -5,7 +5,7 @@ import secrets
 import sqlite3
 import time
 from contextlib import contextmanager
-from typing import Callable, Dict, Iterable, Optional
+from typing import Callable, Dict, Iterable, Optional, Tuple
 
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -14,9 +14,7 @@ from ronovo_portfolio_auth.login_limiter import LockedOut, LoginLimiter
 
 USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_-]{3,20}$")
 MIN_PASSWORD_LENGTH = 8
-
-# Checked against when the username doesn't exist, so a wrong username takes as long as a wrong password
-DUMMY_HASH = generate_password_hash("not a real password")
+NO_ACCOUNT = "There is no account with that username"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -32,26 +30,30 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS saves (
     user_id INTEGER NOT NULL REFERENCES users(id),
     name TEXT NOT NULL,
+    world_id TEXT NOT NULL,
     data TEXT NOT NULL,
-    last_saved REAL NOT NULL,
     PRIMARY KEY (user_id, name)
 );
-CREATE TABLE IF NOT EXISTS deleted_saves (
+CREATE TABLE IF NOT EXISTS deleted_worlds (
     user_id INTEGER NOT NULL REFERENCES users(id),
-    name TEXT NOT NULL,
+    world_id TEXT NOT NULL,
     deleted_at REAL NOT NULL,
-    PRIMARY KEY (user_id, name)
+    PRIMARY KEY (user_id, world_id)
 );
 CREATE TABLE IF NOT EXISTS records (
     user_id INTEGER PRIMARY KEY REFERENCES users(id),
     achievements TEXT NOT NULL,
-    devoured TEXT NOT NULL
+    devours TEXT NOT NULL
 );
 """
 
 
-# Worlds an account can keep. Saves arrive from the browser, so this stops one account filling the disk.
+# Saves and deletes arrive from the browser, so these stop one account filling the disk. Only the newest
+# MAX_DELETED deleted worlds are remembered.
 MAX_SAVES = 50
+MAX_DELETED = 200
+
+Devour = Tuple[str, int, str]
 
 
 class AccountError(Exception):
@@ -63,10 +65,20 @@ def check_password(password: str):
         raise AccountError(f"Passwords need at least {MIN_PASSWORD_LENGTH} characters")
 
 
+def _forget(db, user_id: int, world_id: str):
+    """Deletes a world and remembers that it was deleted, so another browser's copy doesn't bring it back."""
+    db.execute("DELETE FROM saves WHERE user_id = ? AND world_id = ?", (user_id, world_id))
+    db.execute("""INSERT INTO deleted_worlds (user_id, world_id, deleted_at) VALUES (?, ?, ?)
+                  ON CONFLICT (user_id, world_id) DO UPDATE SET deleted_at = excluded.deleted_at""",
+               (user_id, world_id, time.time()))
+    db.execute("""DELETE FROM deleted_worlds WHERE user_id = ? AND world_id NOT IN (
+                      SELECT world_id FROM deleted_worlds WHERE user_id = ? ORDER BY deleted_at DESC LIMIT ?)""",
+               (user_id, user_id, MAX_DELETED))
+
+
 class Accounts:
-    def __init__(self, path: str, secret_key: str):
+    def __init__(self, path: str):
         self.path = path
-        self.secret_key = secret_key.encode("utf-8")
         self._logins = LoginLimiter()
         with self._db() as db:
             db.execute("PRAGMA journal_mode=WAL")
@@ -78,6 +90,22 @@ class Accounts:
         try:
             with db:
                 yield db
+        finally:
+            db.close()
+
+    @contextmanager
+    def _write(self):
+        """A transaction that takes the write lock before it reads, so two requests can't both read a row and
+        then each write back their own copy."""
+        db = sqlite3.connect(self.path, timeout=10, isolation_level=None)
+        try:
+            db.execute("BEGIN IMMEDIATE")
+            try:
+                yield db
+            except BaseException:
+                db.execute("ROLLBACK")
+                raise
+            db.execute("COMMIT")
         finally:
             db.close()
 
@@ -103,8 +131,7 @@ class Accounts:
         with self._db() as db:
             row = db.execute("SELECT id, password_hash FROM users WHERE username = ?", (username,)).fetchone()
         try:
-            valid = self._logins.attempt(username, lambda: check_password_hash(row[1] if row else DUMMY_HASH, password)
-                                         and row is not None)
+            valid = self._logins.attempt(username, lambda: row is not None and check_password_hash(row[1], password))
         except LockedOut as locked:
             raise AccountError(str(locked)) from None
         if not valid:
@@ -157,22 +184,24 @@ class Accounts:
                 # The name is taken, or a second login for this portfolio account got there first
                 n += 1
 
-    def security_question(self, username: str) -> str:
+    def _reset_account(self, username: str) -> Tuple[int, str, str]:
+        """(id, security question, answer hash) of the account a password reset is for."""
         with self._db() as db:
-            row = db.execute("SELECT security_question FROM users WHERE username = ? AND security_answer_hash IS NOT NULL",
+            row = db.execute("SELECT id, security_question, security_answer_hash FROM users WHERE username = ?",
                              (username,)).fetchone()
-        return row[0] if row else security_questions.stand_in_question(username, self.secret_key)
+        if row is None:
+            raise AccountError(NO_ACCOUNT)
+        if row[2] is None:
+            raise AccountError("That account has no security question. Log in with your portfolio account.")
+        return row
+
+    def security_question(self, username: str) -> str:
+        return self._reset_account(username)[1]
 
     def reset_password(self, username: str, answer: str, new_password: str):
         """Sets a new password when the security answer is right. Too many wrong answers lock resets for a while."""
         check_password(new_password)
-        with self._db() as db:
-            row = db.execute("""SELECT id, security_answer_hash FROM users
-                                WHERE username = ? AND security_answer_hash IS NOT NULL""", (username,)).fetchone()
-        if row is None:
-            check_password_hash(DUMMY_HASH, answer)
-            raise AccountError("That answer is wrong")
-        user_id, answer_hash = row
+        user_id, _, answer_hash = self._reset_account(username)
         # Each try is counted before the answer is checked, in one statement, so answers sent at the same
         # moment can't all slip in under the limit.
         with self._db() as db:
@@ -191,70 +220,68 @@ class Accounts:
             db.execute("UPDATE users SET password_hash = ?, reset_failures = 0, reset_locked_until = 0 WHERE id = ?",
                        (generate_password_hash(new_password), user_id))
 
-    def store_save(self, user_id: int, save: Dict, rank: Callable[[Dict], tuple]):
-        """Keeps whichever copy of a save ranks higher when one with this name is already stored. A new name is
-        refused once the account holds MAX_SAVES. A copy last saved before its name was deleted stays deleted;
-        one saved after it is a new world and clears the deletion."""
-        with self._db() as db:
-            deleted = db.execute("SELECT deleted_at FROM deleted_saves WHERE user_id = ? AND name = ?",
-                                 (user_id, save["player_name"])).fetchone()
-            if deleted is not None:
-                if save["last_saved"] <= deleted[0]:
-                    return
-                db.execute("DELETE FROM deleted_saves WHERE user_id = ? AND name = ?",
-                           (user_id, save["player_name"]))
-            stored = db.execute("SELECT data FROM saves WHERE user_id = ? AND name = ?",
-                                (user_id, save["player_name"])).fetchone()
+    def store_save(self, user_id: int, save: Dict, rank: Callable[[Dict], tuple], started: Callable[[Dict], float]):
+        """Keeps whichever copy of a world ranks higher. A different world under a stored world's name replaces it
+        when it began later, and whichever world loses is deleted. Deleted worlds stay deleted, and a new name is
+        refused once the account holds MAX_SAVES."""
+        world_id, name = save["world_id"], save["player_name"]
+        with self._write() as db:
+            if db.execute("SELECT 1 FROM deleted_worlds WHERE user_id = ? AND world_id = ?",
+                          (user_id, world_id)).fetchone():
+                return
+            stored = db.execute("SELECT data FROM saves WHERE user_id = ? AND name = ?", (user_id, name)).fetchone()
             if stored is None:
                 if db.execute("SELECT COUNT(*) FROM saves WHERE user_id = ?", (user_id,)).fetchone()[0] >= MAX_SAVES:
                     return
-            elif rank(json.loads(stored[0])) > rank(save):
+            else:
+                stored = json.loads(stored[0])
+                if stored["world_id"] == world_id:
+                    if rank(stored) > rank(save):
+                        return
+                elif started(stored) > started(save):
+                    _forget(db, user_id, world_id)
+                    return
+                else:
+                    _forget(db, user_id, stored["world_id"])
+            db.execute(
+                """INSERT INTO saves (user_id, name, world_id, data) VALUES (?, ?, ?, ?)
+                   ON CONFLICT (user_id, name) DO UPDATE SET world_id = excluded.world_id, data = excluded.data""",
+                (user_id, name, world_id, json.dumps(save)),
+            )
+
+    def delete_worlds(self, user_id: int, world_ids: Iterable[str]):
+        with self._write() as db:
+            for world_id in world_ids:
+                _forget(db, user_id, world_id)
+
+    def store_record(self, user_id: int, achievements: Iterable[str], devours: Iterable[Devour]):
+        """Combines achievements and devours with the account's. A devour is counted once however many browsers
+        report it."""
+        with self._write() as db:
+            current = self._record(db, user_id)
+            merged_achievements = sorted(set(current["achievements"]) | set(achievements))
+            merged_devours = sorted(set(current["devours"]) | set(devours))
+            if merged_achievements == current["achievements"] and merged_devours == current["devours"]:
                 return
             db.execute(
-                """INSERT INTO saves (user_id, name, data, last_saved) VALUES (?, ?, ?, ?)
-                   ON CONFLICT (user_id, name) DO UPDATE SET data = excluded.data, last_saved = excluded.last_saved""",
-                (user_id, save["player_name"], json.dumps(save), save["last_saved"]),
-            )
-
-    def delete_save(self, user_id: int, name: str):
-        """Deletes the world and remembers that it was deleted, so another browser's copy doesn't bring it back."""
-        with self._db() as db:
-            db.execute("DELETE FROM saves WHERE user_id = ? AND name = ?", (user_id, name))
-            db.execute(
-                """INSERT INTO deleted_saves (user_id, name, deleted_at) VALUES (?, ?, ?)
-                   ON CONFLICT (user_id, name) DO UPDATE SET deleted_at = excluded.deleted_at""",
-                (user_id, name, time.time()),
-            )
-
-    def store_record(self, user_id: int, achievements: Iterable[str], devoured: Dict[str, int]):
-        """Combine achievements, and keep the higher devour count per difficulty so the same
-        world is never counted twice"""
-        current = self.load_record(user_id)
-        merged_achievements = sorted(set(current["achievements"]) | set(achievements))
-        merged_devoured = dict(current["devoured"])
-        for difficulty, count in devoured.items():
-            merged_devoured[difficulty] = max(merged_devoured.get(difficulty, 0), count)
-        if merged_achievements == sorted(current["achievements"]) and merged_devoured == current["devoured"]:
-            return
-        with self._db() as db:
-            db.execute(
-                """INSERT INTO records (user_id, achievements, devoured) VALUES (?, ?, ?)
+                """INSERT INTO records (user_id, achievements, devours) VALUES (?, ?, ?)
                    ON CONFLICT (user_id) DO UPDATE SET achievements = excluded.achievements,
-                   devoured = excluded.devoured""",
-                (user_id, json.dumps(merged_achievements), json.dumps(merged_devoured)),
+                   devours = excluded.devours""",
+                (user_id, json.dumps(merged_achievements), json.dumps(merged_devours)),
             )
 
-    def load_record(self, user_id: int) -> Dict:
-        with self._db() as db:
-            record = db.execute("SELECT achievements, devoured FROM records WHERE user_id = ?", (user_id,)).fetchone()
+    @staticmethod
+    def _record(db, user_id: int) -> Dict:
+        record = db.execute("SELECT achievements, devours FROM records WHERE user_id = ?", (user_id,)).fetchone()
         return {
-            "achievements": json.loads(record[0]) if record else [],
-            "devoured": json.loads(record[1]) if record else {},
+            "achievements": sorted(json.loads(record[0])) if record else [],
+            "devours": sorted(tuple(devour) for devour in json.loads(record[1])) if record else [],
         }
 
     def load(self, user_id: int) -> Dict:
         with self._db() as db:
             saves = db.execute("SELECT name, data FROM saves WHERE user_id = ?", (user_id,)).fetchall()
-            deleted = db.execute("SELECT name FROM deleted_saves WHERE user_id = ?", (user_id,)).fetchall()
-        return {"saves": {name: json.loads(data) for name, data in saves}, "deleted": sorted(name for name, in deleted),
-                **self.load_record(user_id)}
+            deleted = db.execute("SELECT world_id FROM deleted_worlds WHERE user_id = ?", (user_id,)).fetchall()
+            record = self._record(db, user_id)
+        return {"saves": {name: json.loads(data) for name, data in saves},
+                "deleted": sorted(world_id for world_id, in deleted), **record}

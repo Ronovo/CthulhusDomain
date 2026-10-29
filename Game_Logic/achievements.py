@@ -1,16 +1,24 @@
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Set
+from typing import Callable, Dict, List, Optional, Set, Tuple
 
 from main import DIFFICULTIES, Game
 
 # Achievements belong to the player, not to one save, so the browser keeps the player's record and
 # sends it with every request. That is what lets achievements count across saves.
 
+# One devour: (world_id, worlds_destroyed after it, difficulty). The same devour reported twice, by a replayed
+# save or by two browsers, is still one entry.
+Devour = Tuple[str, int, str]
+
 
 @dataclass
 class PlayerRecord:
     earned: Set[str]
-    devoured: Dict[str, int]  # Worlds devoured per difficulty, across every save
+    devours: Set[Devour]
+
+    def devoured(self, difficulty: Optional[str] = None) -> int:
+        """Worlds devoured across every save, on one difficulty or, without one, in total"""
+        return sum(1 for _, _, devoured_on in self.devours if difficulty is None or devoured_on == difficulty)
 
 
 @dataclass
@@ -45,8 +53,7 @@ def devoured_count(name: str, count: int, difficulty: Optional[str] = None) -> A
     """Worlds devoured across every save, on one difficulty or, without one, in total"""
     where = f" on {DIFFICULTIES[difficulty].name}" if difficulty else " in total"
     return Achievement(name, f"Devour {count} worlds{where}",
-                       lambda game, player: (player.devoured.get(difficulty, 0) if difficulty
-                                             else sum(player.devoured.values())) >= count)
+                       lambda game, player: player.devoured(difficulty) >= count)
 
 
 ACHIEVEMENTS: Dict[str, Achievement] = {
@@ -64,7 +71,7 @@ ACHIEVEMENTS: Dict[str, Achievement] = {
                                lambda game, player: game.resources["great_old_ones"].has_manager),
     **{f"devour_{difficulty}": devoured_on(difficulty) for difficulty in DIFFICULTIES},
     "all_difficulties": Achievement("Ph'nglui Mglw'nafh Fhtagn", "Devour a world on every difficulty",
-                                    lambda game, player: all(player.devoured.get(d, 0) > 0 for d in DIFFICULTIES)),
+                                    lambda game, player: all(player.devoured(d) > 0 for d in DIFFICULTIES)),
     "eternal_2": devoured_count("Even Death May Die", 2, "eternal"),
     "quick_20": devoured_count("An Insatiable Appetite", 20, "quick"),
     "recommended_5": devoured_count("A Feast of Worlds", 5, "recommended"),

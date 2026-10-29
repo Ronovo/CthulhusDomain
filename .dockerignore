@@ -8,3 +8,5 @@ docker-compose.yml
 tests
 pytest.ini
 requirements-dev.txt
+data
+.env

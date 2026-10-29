@@ -6,35 +6,74 @@
     const urls = document.body.dataset;
     const $ = (id) => document.getElementById(id);
 
-    function readSave(name) {
-        try {
-            const raw = localStorage.getItem(SAVE_PREFIX + name);
-            return raw ? JSON.parse(raw) : null;
-        } catch {
-            return null;
-        }
-    }
+    // localStorage can be missing or full; the game then runs without keeping anything in this browser.
+    const storage = {
+        get(key) {
+            try {
+                return localStorage.getItem(key);
+            } catch {
+                return null;
+            }
+        },
+        getJson(key) {
+            try {
+                return JSON.parse(storage.get(key));
+            } catch {
+                return null;
+            }
+        },
+        set(key, value) {
+            try {
+                localStorage.setItem(key, typeof value === "string" ? value : JSON.stringify(value));
+            } catch {
+            }
+        },
+        remove(key) {
+            try {
+                localStorage.removeItem(key);
+            } catch {
+            }
+        },
+        keys() {
+            try {
+                return Object.keys(localStorage);
+            } catch {
+                return [];
+            }
+        },
+    };
 
-    function writeSave(save) {
-        try {
-            localStorage.setItem(SAVE_PREFIX + save.player_name, JSON.stringify(save));
-        } catch {
-        }
-    }
+    const readSave = (name) => storage.getJson(SAVE_PREFIX + name);
+    const writeSave = (save) => storage.set(SAVE_PREFIX + save.player_name, save);
 
     function forgetLocalSave(name) {
-        try {
-            localStorage.removeItem(SAVE_PREFIX + name);
-        } catch {
-        }
+        storage.remove(SAVE_PREFIX + name);
         const owners = readOwners();
         delete owners[name];
-        writeOwners(owners);
+        storage.set(OWNERS_KEY, owners);
+    }
+
+    // Deleted worlds wait here until the account has them, so a delete made while the server can't be
+    // reached still happens.
+    const DELETES_KEY = "dead-but-dreaming:pending-deletes";
+
+    function readDeletes() {
+        const deletes = storage.getJson(DELETES_KEY);
+        return Array.isArray(deletes) ? deletes : [];
     }
 
     function deleteSave(name) {
+        const local = readSave(name);
         forgetLocalSave(name);
-        if (account) request(urls.deleteSaveUrl, { name }).catch(console.error);
+        if (local && local.world_id) storage.set(DELETES_KEY, [...readDeletes(), local.world_id]);
+        if (account) syncAccount().catch(console.error);
+    }
+
+    function confirmDelete(name, onDeleted) {
+        askConfirm(`Delete ${name}? This can't be undone.`, () => {
+            deleteSave(name);
+            onDeleted();
+        });
     }
 
     // Which account each save here came from, so on a shared browser one account's saves are never
@@ -44,31 +83,14 @@
     const RECORD_OWNER_KEY = "dead-but-dreaming:record-owner";
 
     function readOwners() {
-        try {
-            const owners = JSON.parse(localStorage.getItem(OWNERS_KEY));
-            return owners && typeof owners === "object" && !Array.isArray(owners) ? owners : {};
-        } catch {
-            return {};
-        }
+        const owners = storage.getJson(OWNERS_KEY);
+        return owners && typeof owners === "object" && !Array.isArray(owners) ? owners : {};
     }
 
-    function writeOwners(owners) {
-        try {
-            localStorage.setItem(OWNERS_KEY, JSON.stringify(owners));
-        } catch {
-        }
-    }
-
-    function listSaves() {
-        try {
-            return Object.keys(localStorage)
-                .filter((key) => key.startsWith(SAVE_PREFIX))
-                .map((key) => key.slice(SAVE_PREFIX.length))
-                .sort();
-        } catch {
-            return [];
-        }
-    }
+    const listSaves = () => storage.keys()
+        .filter((key) => key.startsWith(SAVE_PREFIX))
+        .map((key) => key.slice(SAVE_PREFIX.length))
+        .sort();
 
     async function request(url, body, timeoutMs = 0) {
         const options = body === undefined ? {} : {
@@ -120,17 +142,11 @@
         stylePicker.value = style;
     }
 
-    try {
-        const saved = localStorage.getItem(STYLE_KEY);
-        if (saved && hasStyle(saved)) applyStyle(saved);
-    } catch {
-    }
+    const savedStyle = storage.get(STYLE_KEY);
+    if (savedStyle && hasStyle(savedStyle)) applyStyle(savedStyle);
     stylePicker.addEventListener("change", () => {
         applyStyle(stylePicker.value);
-        try {
-            localStorage.setItem(STYLE_KEY, stylePicker.value);
-        } catch {
-        }
+        storage.set(STYLE_KEY, stylePicker.value);
     });
 
     // Menus
@@ -155,29 +171,26 @@
     }
 
     async function newGame(name) {
-        const data = await request(urls.newGameUrl, { name, difficulty: $("difficulty").value });
-        startGame(data.save);
+        try {
+            const data = await request(urls.newGameUrl, { name, difficulty: $("difficulty").value });
+            startGame(data.save);
+        } catch (error) {
+            show("name-entry");
+            $("name-error").textContent = error.message;
+        }
     }
 
-    // Achievements and the devour tally belong to this browser, not to one save, so they survive
-    // deleting a world. The server signs the record it sends, and sends it back with every request.
+    // Achievements and devours belong to the player, not to one save, so they survive deleting a world.
+    // The server signs the record and the browser sends it back with every request; a logged-in account
+    // keeps a copy too.
     const RECORD_KEY = "dead-but-dreaming:record";
 
     function readRecord() {
-        try {
-            const record = JSON.parse(localStorage.getItem(RECORD_KEY));
-            return record && Array.isArray(record.achievements) ? record : null;
-        } catch {
-            return null;
-        }
+        const record = storage.getJson(RECORD_KEY);
+        return record && Array.isArray(record.achievements) ? record : null;
     }
 
-    function writeRecord(record) {
-        try {
-            localStorage.setItem(RECORD_KEY, JSON.stringify(record));
-        } catch {
-        }
-    }
+    const writeRecord = (record) => storage.set(RECORD_KEY, record);
 
     function readAchievements() {
         const record = readRecord();
@@ -219,11 +232,16 @@
             const load = el("button", "menu-button", name);
             const remove = el("button", "delete-button", "Delete");
             load.type = remove.type = "button";
-            load.addEventListener("click", () => startGame(readSave(name)));
-            remove.addEventListener("click", () => askConfirm(`Delete ${name}? This can't be undone.`, () => {
-                deleteSave(name);
-                showLoadList();
-            }));
+            load.addEventListener("click", () => {
+                const loaded = readSave(name);
+                if (loaded) {
+                    startGame(loaded);
+                } else {
+                    show("main-menu");
+                    $("menu-error").textContent = `${name} can't be read. Delete it from Load Game.`;
+                }
+            });
+            remove.addEventListener("click", () => confirmDelete(name, showLoadList));
             row.append(load, remove);
             return row;
         }));
@@ -239,7 +257,11 @@
     $("load-game").addEventListener("click", showLoadList);
     $("show-achievements").addEventListener("click", showAchievements);
     $("random-name").addEventListener("click", async () => {
-        $("name-input").value = (await request(urls.randomNameUrl)).name;
+        try {
+            $("name-input").value = (await request(urls.randomNameUrl)).name;
+        } catch (error) {
+            $("name-error").textContent = error.message;
+        }
     });
     $("name-form").addEventListener("submit", (event) => {
         event.preventDefault();
@@ -249,7 +271,8 @@
         button.addEventListener("click", () => show("main-menu"));
     }
     $("footer-achievements").addEventListener("click", showAchievements);
-    $("achievements-back").addEventListener("click", () => show(save ? "game" : "main-menu"));
+    const backToPlay = () => show(save ? "game" : "main-menu");
+    $("achievements-back").addEventListener("click", backToPlay);
 
     // Account: optional. Logging in merges this browser's progress with the account's, and while
     // logged in the server also keeps every save in the account.
@@ -276,42 +299,37 @@
             const local = readSave(name);
             if (local) saves[name] = local;
         }
-        try {
-            const recordOwner = localStorage.getItem(RECORD_OWNER_KEY);
-            if (recordOwner && recordOwner !== account) {
-                localStorage.removeItem(RECORD_KEY);
-            }
-        } catch {
+        const recordOwner = storage.get(RECORD_OWNER_KEY);
+        if (recordOwner && recordOwner !== account) storage.remove(RECORD_KEY);
+        const deletes = readDeletes();
+        const merged = await request(urls.syncUrl, { saves, deleted: deletes, record: readRecord() });
+        storage.set(DELETES_KEY, readDeletes().filter((id) => !deletes.includes(id)));
+        const deleted = new Set(merged.deleted);
+        for (const name of listSaves()) {
+            const local = readSave(name);
+            if (local && deleted.has(local.world_id)) forgetLocalSave(name);
         }
-        const merged = await request(urls.syncUrl, {
-            saves, record: readRecord(),
-        });
-        for (const name of merged.deleted) forgetLocalSave(name);
         const synced = readOwners();
         for (const remote of Object.values(merged.saves)) {
             writeSave(remote);
             synced[remote.player_name] = account;
         }
-        writeOwners(synced);
+        storage.set(OWNERS_KEY, synced);
         writeRecord(merged.record);
-        try {
-            localStorage.setItem(RECORD_OWNER_KEY, account);
-        } catch {
-        }
+        storage.set(RECORD_OWNER_KEY, account);
     }
 
     async function finishLogin(data) {
         setAccount(data.username);
         await syncAccount();
-        show(save ? "game" : "main-menu");
+        backToPlay();
     }
 
-    async function submitLogin(url) {
+    async function submitLogin(url, extra = {}) {
         $("login-error").textContent = "";
         try {
             const data = await request(url, {
-                username: $("login-username").value, password: $("login-password").value,
-                question: $("login-question").value, answer: $("login-answer").value,
+                username: $("login-username").value, password: $("login-password").value, ...extra,
             });
             $("login-password").value = "";
             $("login-answer").value = "";
@@ -417,8 +435,10 @@
         event.preventDefault();
         submitLogin(urls.loginUrl);
     });
-    $("register").addEventListener("click", () => submitLogin(urls.registerUrl));
-    $("login-back").addEventListener("click", () => show(save ? "game" : "main-menu"));
+    $("register").addEventListener("click", () => submitLogin(urls.registerUrl, {
+        question: $("login-question").value, answer: $("login-answer").value,
+    }));
+    $("login-back").addEventListener("click", backToPlay);
     $("logout-button").addEventListener("click", async () => {
         await request(urls.logoutUrl, {}).catch(console.error);
         setAccount(null);
@@ -548,7 +568,7 @@
     window.addEventListener("pagehide", () => {
         if (!account || !save) return;
         const body = JSON.stringify({
-            saves: { [save.player_name]: save }, record: readRecord(),
+            saves: { [save.player_name]: save }, record: readRecord(), reply: false,
         });
         navigator.sendBeacon(urls.syncUrl, new Blob([body], { type: "application/json" }));
     });
@@ -559,10 +579,8 @@
     $("new-world").addEventListener("click", () => act("reset"));
     $("endless").addEventListener("click", () => act("endless"));
     $("delete-world").addEventListener("click", () => {
-        const name = save.player_name;
-        askConfirm(`Delete ${name}? This can't be undone.`, () => {
+        confirmDelete(save.player_name, () => {
             stopGame();
-            deleteSave(name);
             show("main-menu");
         });
     });

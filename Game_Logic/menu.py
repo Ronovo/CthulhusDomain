@@ -2,7 +2,6 @@ import random
 
 MAX_NAME_LENGTH = 20
 
-# Great Old One Names
 GREAT_OLD_ONES = [
     "Cthulhu",
     "Nyarlathotep",
