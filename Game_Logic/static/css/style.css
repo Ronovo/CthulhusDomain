@@ -608,6 +608,13 @@ select {
     gap: 4px;
 }
 
+.footer-cell-row {
+    flex-direction: row;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+}
+
 .footer-cell .number {
     white-space: normal;
 }

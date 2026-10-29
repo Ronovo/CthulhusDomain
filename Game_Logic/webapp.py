@@ -5,7 +5,7 @@ from typing import Dict, Optional
 
 from flask import Flask, abort, jsonify, redirect, render_template, request, session, url_for
 
-import ronovo_sso
+import portfolio_sso
 from security_questions import QUESTIONS
 
 from accounts import AccountError, Accounts
@@ -15,6 +15,9 @@ from menu import GREAT_OLD_ONES, MAX_NAME_LENGTH, random_name
 
 # A cycle shorter than this is too fast to animate, so its bar is drawn solid
 SOLID_BAR_SECONDS = 0.25
+
+PORTFOLIO_CHOICE_SECONDS = 10 * 60
+PORTFOLIO_LOGIN_EXPIRED = "Log in with your portfolio account again."
 
 DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data"))
 
@@ -167,18 +170,58 @@ def create_app() -> Flask:
         body = json_body()
         return str(body.get("username", "")).strip(), str(body.get("password", ""))
 
-    def ronovo_login(account: Dict):
-        user_id = accounts.ronovo_user(account["sub"], account["username"])
-        log_in(user_id, accounts.username(user_id))
+    # The first portfolio login here asks whether to link an account the player already has or make a new one,
+    # so it waits in the session until they choose.
+    def portfolio_login(account: Dict):
+        user_id = accounts.linked_user(account["sub"])
+        if user_id is None:
+            session.clear()
+            session["portfolio_pending"] = {"sub": account["sub"], "username": account["username"],
+                                         "expires": time.time() + PORTFOLIO_CHOICE_SECONDS}
+        else:
+            log_in(user_id, accounts.username(user_id))
         return redirect(url_for("index"))
 
-    ronovo_sso.add_flask_routes(app, "dead-but-dreaming", ronovo_login)
+    def portfolio_pending() -> Optional[Dict]:
+        pending = session.get("portfolio_pending")
+        return pending if pending and pending["expires"] > time.time() else None
+
+    def logged_in(user_id: int) -> Dict:
+        username = accounts.username(user_id)
+        log_in(user_id, username)
+        return jsonify(username=username, needs_security_question=not accounts.has_security_question(user_id))
+
+    portfolio_sso.add_flask_routes(app, "dead-but-dreaming", portfolio_login)
 
     @app.get("/")
     def index():
         return render_template("index.html", max_name_length=MAX_NAME_LENGTH, great_old_ones=GREAT_OLD_ONES,
                                difficulties=DIFFICULTIES, default_difficulty=DEFAULT_DIFFICULTY,
-                               achievements=ACHIEVEMENTS, ronovo=ronovo_sso.enabled(), questions=QUESTIONS)
+                               achievements=ACHIEVEMENTS, portfolio=portfolio_sso.enabled(), questions=QUESTIONS,
+                               portfolio_url=portfolio_sso.portfolio_url() if portfolio_sso.enabled() else "")
+
+    @app.post("/api/portfolio/link")
+    def api_portfolio_link():
+        pending = portfolio_pending()
+        if pending is None:
+            return jsonify(error=PORTFOLIO_LOGIN_EXPIRED), 400
+        username, password = credentials()
+        try:
+            user_id = accounts.check_login(username, password)
+            accounts.link_portfolio(user_id, pending["sub"])
+        except AccountError as error:
+            return jsonify(error=str(error)), 400
+        return logged_in(user_id)
+
+    @app.post("/api/portfolio/new")
+    def api_portfolio_new():
+        pending = portfolio_pending()
+        if pending is None:
+            return jsonify(error=PORTFOLIO_LOGIN_EXPIRED), 400
+        user_id = accounts.portfolio_user(pending["sub"], pending["username"])
+        username = accounts.username(user_id)
+        log_in(user_id, username)
+        return jsonify(username=username, needs_security_question=False)
 
     @app.get("/api/random-name")
     def api_random_name():
@@ -242,7 +285,9 @@ def create_app() -> Flask:
 
     @app.get("/api/account")
     def api_account():
-        return jsonify(username=session.get("username") if current_user() is not None else None)
+        pending = portfolio_pending()
+        return jsonify(username=session.get("username") if current_user() is not None else None,
+                       portfolio_pending=pending["username"] if pending else None)
 
     @app.post("/api/register")
     def api_register():
@@ -263,9 +308,7 @@ def create_app() -> Flask:
             user_id = accounts.check_login(username, password)
         except AccountError as error:
             return jsonify(error=str(error)), 401
-        username = accounts.username(user_id)
-        log_in(user_id, username)
-        return jsonify(username=username, needs_security_question=not accounts.has_security_question(user_id))
+        return logged_in(user_id)
 
     @app.post("/api/security-question")
     def api_security_question():

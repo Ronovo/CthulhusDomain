@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS records (
 """
 # Added after the first release, so they are created on older databases as well
 USER_COLUMNS = {
-    "ronovo_sub": "TEXT",
+    "portfolio_sub": "TEXT",
     "security_question": "TEXT",
     "security_answer_hash": "TEXT",
     "reset_failures": "INTEGER NOT NULL DEFAULT 0",
@@ -65,7 +65,7 @@ class Accounts:
             for column, kind in USER_COLUMNS.items():
                 if column not in existing:
                     db.execute(f"ALTER TABLE users ADD COLUMN {column} {kind}")
-            db.execute("CREATE UNIQUE INDEX IF NOT EXISTS users_ronovo_sub ON users (ronovo_sub)")
+            db.execute("CREATE UNIQUE INDEX IF NOT EXISTS users_portfolio_sub ON users (portfolio_sub)")
 
     @contextmanager
     def _db(self):
@@ -109,23 +109,38 @@ class Accounts:
             row = db.execute("SELECT username FROM users WHERE id = ?", (user_id,)).fetchone()
         return row[0] if row else None
 
-    def ronovo_user(self, sub: str, username: str) -> int:
-        """The account tied to a Ronovo account, created on its first login and named after it. Its password is
-        random and never shown, so logging in with Ronovo is the only way in."""
+    def linked_user(self, sub: str) -> Optional[int]:
+        """The account linked to a portfolio account, or None"""
+        with self._db() as db:
+            row = db.execute("SELECT id FROM users WHERE portfolio_sub = ?", (sub,)).fetchone()
+        return row[0] if row else None
+
+    def link_portfolio(self, user_id: int, sub: str):
+        try:
+            with self._db() as db:
+                linked = db.execute("UPDATE users SET portfolio_sub = ? WHERE id = ? AND portfolio_sub IS NULL",
+                                    (sub, user_id)).rowcount
+        except sqlite3.IntegrityError:
+            raise AccountError("Your portfolio account is already linked to another account here")
+        if not linked:
+            raise AccountError("That account is already linked to another portfolio account")
+
+    def portfolio_user(self, sub: str, username: str) -> int:
+        """A new account linked to a portfolio account and named after it. Its password is random and never shown,
+        so logging in with the portfolio account is the only way in."""
         base = username if USERNAME_PATTERN.match(username) else "player"
         n = 1
         while True:
-            with self._db() as db:
-                row = db.execute("SELECT id FROM users WHERE ronovo_sub = ?", (sub,)).fetchone()
-            if row:
-                return row[0]
+            user_id = self.linked_user(sub)
+            if user_id is not None:
+                return user_id
             name = base if n == 1 else f"{base[:20 - len(str(n))]}{n}"
             try:
                 with self._db() as db:
-                    return db.execute("INSERT INTO users (username, password_hash, ronovo_sub) VALUES (?, ?, ?)",
+                    return db.execute("INSERT INTO users (username, password_hash, portfolio_sub) VALUES (?, ?, ?)",
                                       (name, generate_password_hash(secrets.token_urlsafe(32)), sub)).lastrowid
             except sqlite3.IntegrityError:
-                # The name is taken, or a second login for this Ronovo account got there first
+                # The name is taken, or a second login for this portfolio account got there first
                 n += 1
 
     def has_security_question(self, user_id: int) -> bool:

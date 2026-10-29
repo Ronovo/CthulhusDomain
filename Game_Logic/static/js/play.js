@@ -244,7 +244,7 @@
         $("account-name").textContent = username || "";
         $("account-name").hidden = !username;
         $("login-button").hidden = Boolean(username);
-        $("ronovo-button").hidden = Boolean(username) || !urls.ronovoUrl;
+        $("portfolio-button").hidden = Boolean(username) || !urls.portfolioLoginUrl;
         $("logout-button").hidden = !username;
     }
 
@@ -262,6 +262,12 @@
         writeDevoured(merged.devoured);
     }
 
+    async function finishLogin(data) {
+        setAccount(data.username);
+        await syncAccount();
+        show(data.needs_security_question ? "security" : save ? "game" : "main-menu");
+    }
+
     async function submitLogin(url) {
         $("login-error").textContent = "";
         try {
@@ -271,12 +277,52 @@
             });
             $("login-password").value = "";
             $("login-answer").value = "";
-            setAccount(data.username);
-            await syncAccount();
-            show(data.needs_security_question ? "security" : save ? "game" : "main-menu");
+            await finishLogin(data);
         } catch (error) {
             $("login-error").textContent = error.message;
         }
+    }
+
+    // The first portfolio login here: link an account the player already has, or make a new one.
+    function showAccountLink(name) {
+        $("account-link-name").textContent = name;
+        $("account-link-username").value = name;
+        $("account-link-error").textContent = "";
+        show("account-link");
+        $("account-link-password").focus();
+    }
+
+    async function chooseLinkedAccount(url, body) {
+        $("account-link-error").textContent = "";
+        try {
+            const data = await request(url, body);
+            $("account-link-password").value = "";
+            await finishLogin(data);
+        } catch (error) {
+            $("account-link-error").textContent = error.message;
+        }
+    }
+
+    $("account-link-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        chooseLinkedAccount(urls.portfolioLinkUrl, {
+            username: $("account-link-username").value, password: $("account-link-password").value,
+        });
+    });
+    $("account-link-new").addEventListener("click", () => chooseLinkedAccount(urls.portfolioNewUrl, {}));
+    $("account-link-cancel").addEventListener("click", async () => {
+        await request(urls.logoutUrl, {}).catch(console.error);
+        show("main-menu");
+    });
+
+    // Names the portfolio account this browser is logged in to, when the portfolio says who that is.
+    if (urls.portfolioUrl) {
+        fetch(`${urls.portfolioUrl}/sso/me`, { credentials: "include", signal: AbortSignal.timeout(5000) })
+            .then((response) => (response.ok ? response.json() : {}))
+            .then((data) => {
+                if (data.username) $("portfolio-button").textContent = `Log In as ${data.username}`;
+            })
+            .catch(() => {});
     }
 
     // Reset takes two steps: the username brings up its security question, then the answer and a new
@@ -339,8 +385,8 @@
         show("login");
         $("login-username").focus();
     });
-    $("ronovo-button").addEventListener("click", () => {
-        location.href = urls.ronovoUrl;
+    $("portfolio-button").addEventListener("click", () => {
+        location.href = urls.portfolioLoginUrl;
     });
     $("login-form").addEventListener("submit", (event) => {
         event.preventDefault();
@@ -355,6 +401,7 @@
     request(urls.accountUrl)
         .then((data) => {
             setAccount(data.username);
+            if (data.portfolio_pending) showAccountLink(data.portfolio_pending);
             if (!data.username) return;
             return syncAccount();
         })

@@ -20,11 +20,14 @@
       data-security-question-url="{{ url_for('api_security_question') }}"
       data-reset-question-url="{{ url_for('api_reset_question') }}"
       data-reset-password-url="{{ url_for('api_reset_password') }}"
-      {%- if ronovo %} data-ronovo-url="{{ url_for('sso_login') }}"{% endif %}>
+      {%- if portfolio %} data-portfolio-login-url="{{ url_for('sso_login') }}"
+      data-portfolio-link-url="{{ url_for('api_portfolio_link') }}"
+      data-portfolio-new-url="{{ url_for('api_portfolio_new') }}"
+      data-portfolio-url="{{ portfolio_url }}"{% endif %}>
     <div class="style-bar">
         <span id="account-name" class="account-name" hidden></span>
         <button type="button" class="small-button" id="login-button">Log In</button>
-        <button type="button" class="small-button" id="ronovo-button" hidden>Log In with Ronovo</button>
+        <button type="button" class="small-button" id="portfolio-button" hidden>Log In with Portfolio Account</button>
         <button type="button" class="small-button" id="logout-button" hidden>Log Out</button>
         <label for="style-picker">Style</label>
         <select id="style-picker">
@@ -60,6 +63,21 @@
         </form>
         <p id="login-error" class="error" role="alert"></p>
         <p class="login-note">Your saves stay in this browser too.</p>
+    </section>
+
+    <section id="account-link" class="screen menu" hidden>
+        <h1 class="title">Link Your Account</h1>
+        <p class="login-note">This is the first time <strong id="account-link-name"></strong> has logged in here. If you
+            already have a Dead But Dreaming account, log in to it once to link it. After that, your portfolio account
+            opens it on any device.</p>
+        <form id="account-link-form" class="menu-form">
+            <input id="account-link-username" class="login-input" maxlength="20" autocomplete="username" placeholder="Username" aria-label="Username">
+            <input id="account-link-password" class="login-input" type="password" autocomplete="current-password" placeholder="Password" aria-label="Password">
+            <button type="submit" class="menu-button">Link This Account</button>
+            <button type="button" class="menu-button" id="account-link-new">Make a New Account</button>
+            <button type="button" class="menu-button" id="account-link-cancel">Cancel</button>
+        </form>
+        <p id="account-link-error" class="error" role="alert"></p>
     </section>
 
     <section id="reset" class="screen menu" hidden>
@@ -170,7 +188,7 @@
                     <p id="devoured-label" class="number" hidden></p>
                 </div>
             </div>
-            <div class="footer-cell">
+            <div class="footer-cell footer-cell-row">
                 <p id="worlds-devoured" class="number"></p>
                 <button type="button" class="small-button" id="footer-achievements">Achievements</button>
             </div>
