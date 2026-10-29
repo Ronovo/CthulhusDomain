@@ -12,11 +12,15 @@ from accounts import AccountError, Accounts
 from achievements import ACHIEVEMENTS, PlayerRecord, new_achievements
 from main import DEFAULT_DIFFICULTY, DIFFICULTIES, Game
 from menu import GREAT_OLD_ONES, MAX_NAME_LENGTH, random_name
+from signing import Signer
 
 # A cycle shorter than this is too fast to animate, so its bar is drawn solid
 SOLID_BAR_SECONDS = 0.25
 
 PORTFOLIO_CHOICE_SECONDS = 10 * 60
+# A tick carries the clicks since the last one, four times a second, so this is far more than a person can click.
+MAX_ACTIONS_PER_REQUEST = 200
+EDITED_SAVE = "This save was changed outside the game, so it can't be loaded."
 PORTFOLIO_LOGIN_EXPIRED = "Log in with your portfolio account again."
 
 DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data"))
@@ -43,12 +47,14 @@ def load_secret_key() -> str:
         return f.read().strip()
 
 
-def read_player_record(body: Dict) -> PlayerRecord:
-    """The achievements and devour tally the browser sent, keeping only valid entries"""
-    earned = body.get("achievements", [])
+def read_player_record(record: Optional[Dict]) -> PlayerRecord:
+    """The achievements and devour tally from a verified record, keeping only valid entries. An unsigned or edited
+    record counts as empty."""
+    record = record or {}
+    earned = record.get("achievements", [])
     if not isinstance(earned, list):
         earned = []
-    devoured = body.get("devoured", {})
+    devoured = record.get("devoured", {})
     if not isinstance(devoured, dict):
         devoured = {}
     return PlayerRecord(
@@ -58,6 +64,11 @@ def read_player_record(body: Dict) -> PlayerRecord:
                   if difficulty in DIFFICULTIES and isinstance(count, int) and not isinstance(count, bool)
                   and count >= 0},
     )
+
+
+def save_rank(save: Dict) -> tuple:
+    """How a stored copy of a world compares with another: more progress wins, then the newer one."""
+    return Game(load_data=save).progress() + (save["last_saved"],)
 
 
 def progress_marker(game: Game) -> tuple:
@@ -164,11 +175,16 @@ def create_app() -> Flask:
         session["username"] = username
         session["session_key"] = accounts.session_key(user_id)
 
+    signer = Signer(app.config["SECRET_KEY"])
+
     def json_body() -> Dict:
         body = request.get_json(silent=True)
         if not isinstance(body, dict):
             abort(400)
         return body
+
+    def signed_record(player: PlayerRecord) -> Dict:
+        return signer.sign({"achievements": sorted(player.earned), "devoured": player.devoured})
 
     def credentials():
         body = json_body()
@@ -233,25 +249,24 @@ def create_app() -> Flask:
 
     @app.post("/api/new-game")
     def api_new_game():
-        body = request.get_json(silent=True)
-        if not isinstance(body, dict):
-            abort(400)
+        body = json_body()
         name = str(body.get("name", "")).strip()
         difficulty = body.get("difficulty", DEFAULT_DIFFICULTY)
         if not name or len(name) > MAX_NAME_LENGTH or not isinstance(difficulty, str) or difficulty not in DIFFICULTIES:
             abort(400)
-        return jsonify(save=Game(name, difficulty=difficulty).save_game_state())
+        return jsonify(save=signer.sign(Game(name, difficulty=difficulty).save_game_state()))
 
     # The browser sends its save and any clicks since the last call; the game catches up to now,
     # applies the clicks in order, and sends back the new save for the browser to keep.
     @app.post("/api/play")
     def api_play():
-        body = request.get_json(silent=True)
-        if not isinstance(body, dict):
-            abort(400)
+        body = json_body()
+        save = signer.verify(body.get("save"))
+        if save is None:
+            return jsonify(error=EDITED_SAVE), 400
         try:
-            game = Game(load_data=body["save"])
-        except (KeyError, TypeError, ValueError, AttributeError):
+            game = Game(load_data=save)
+        except (KeyError, TypeError, ValueError, AttributeError, OverflowError):
             abort(400)
         game.advance(time.time())
         worlds_before = game.worlds_destroyed
@@ -264,11 +279,12 @@ def create_app() -> Flask:
             "reset": lambda _target: game.reset_game(),
             "endless": lambda _target: game.enter_endless(),
         }
-        for action in body.get("actions", []):
+        requested = body.get("actions", [])
+        for action in requested[:MAX_ACTIONS_PER_REQUEST] if isinstance(requested, list) else []:
             if isinstance(action, dict) and action.get("type") in actions:
                 actions[action["type"]](str(action.get("target", "")))
 
-        player = read_player_record(body)
+        player = read_player_record(signer.verify(body.get("record")))
         player.devoured[game.difficulty] = (player.devoured.get(game.difficulty, 0)
                                             + game.worlds_destroyed - worlds_before)
         new = [{"id": achievement_id,
@@ -282,10 +298,11 @@ def create_app() -> Flask:
         if body.get("backup") is True or new or progress_marker(game) != progress_before:
             user_id = current_user()
             if user_id is not None:
-                accounts.store_save(user_id, save)
+                accounts.store_save(user_id, save, save_rank)
                 accounts.store_record(user_id, player.earned, player.devoured)
 
-        return jsonify(save=save, view=build_view(game), new_achievements=new, devoured=player.devoured)
+        return jsonify(save=signer.sign(save), view=build_view(game), new_achievements=new,
+                       record=signed_record(player))
 
     @app.get("/api/account")
     def api_account():
@@ -335,34 +352,37 @@ def create_app() -> Flask:
         return jsonify(username=None)
 
     # Merges this browser's saves, achievements and devour tally into the account, and sends back
-    # everything the account now holds. For saves with the same name the newer one wins.
+    # everything the account now holds, plus the names of deleted worlds so the browser drops its copies.
+    # For saves with the same name the one further along wins.
     @app.post("/api/sync")
     def api_sync():
         user_id = current_user()
         if user_id is None:
             return jsonify(error="Not logged in"), 401
-        body = request.get_json(silent=True)
-        if not isinstance(body, dict):
-            abort(400)
+        body = json_body()
         saves = body.get("saves", {})
         if isinstance(saves, dict):
             for save in saves.values():
-                try:
-                    accounts.store_save(user_id, Game(load_data=save).save_game_state())
-                except (KeyError, TypeError, ValueError, AttributeError):
+                save = signer.verify(save)
+                if save is None:
                     continue
-        player = read_player_record(body)
+                try:
+                    accounts.store_save(user_id, Game(load_data=save).save_game_state(), save_rank)
+                except (KeyError, TypeError, ValueError, AttributeError, OverflowError):
+                    continue
+        player = read_player_record(signer.verify(body.get("record")))
         accounts.store_record(user_id, player.earned, player.devoured)
-        return jsonify(accounts.load(user_id))
+        stored = accounts.load(user_id)
+        record = PlayerRecord(earned=set(stored["achievements"]), devoured=stored["devoured"])
+        return jsonify(saves={name: signer.sign(save) for name, save in stored["saves"].items()},
+                       deleted=stored["deleted"], record=signed_record(record))
 
     @app.post("/api/delete-save")
     def api_delete_save():
         user_id = current_user()
         if user_id is None:
             return jsonify(error="Not logged in"), 401
-        body = request.get_json(silent=True)
-        if not isinstance(body, dict):
-            abort(400)
+        body = json_body()
         accounts.delete_save(user_id, str(body.get("name", "")))
         return jsonify(deleted=True)
 
@@ -370,4 +390,4 @@ def create_app() -> Flask:
 
 
 if __name__ == "__main__":
-    create_app().run(debug=True)
+    create_app().run()

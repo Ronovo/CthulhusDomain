@@ -5,3 +5,6 @@
 Dockerfile
 .dockerignore
 docker-compose.yml
+tests
+pytest.ini
+requirements-dev.txt

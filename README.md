@@ -33,8 +33,8 @@ The game logic is Python. The browser keeps the save and shows the game; it does
 ## Accounts
 Logging in is optional. Without it, everything stays in the browser. With it, progress follows you to any browser you log in from:
 
-- Logging in merges this browser's saves, achievements and devour counts with the account's. For saves with the same name the one played most recently wins, by when it was last open, not by how far along it is; devour counts keep the higher number for each difficulty.
-- While logged in, saves are copied to the account whenever progress changes, every 30 seconds, and when you leave the page. Deleting a world deletes it from the account too, though another browser that still holds a copy uploads it again the next time it logs in.
+- Logging in merges this browser's saves, achievements and devour counts with the account's. For saves with the same name the one further along wins (worlds devoured, then upgrades, managers and levels bought, then sanity), and the newer one breaks a tie; devour counts keep the higher number for each difficulty. An account keeps up to 50 worlds.
+- While logged in, saves are copied to the account whenever progress changes, every 30 seconds, and when you leave the page. Deleting a world deletes it from the account too, and other browsers drop their copies the next time they sync. A new world started later under the same name is kept.
 - Logging out keeps this browser's copy. On a shared browser, the next account to log in doesn't get it: saves that came from one account are cleared from the browser when a different account logs in, and stay in their own account. Saves made while logged out join whichever account logs in next.
 - Five wrong passwords in a row lock a username's logins for a minute, and a password reset logs the account out of every other browser.
 - Creating an account asks for a security question. **Forgot Password** resets the password with its answer, and
@@ -52,7 +52,7 @@ Accounts are kept in a SQLite database in the data folder (`DATA_DIR`, `/app/dat
 
 ### Security caveats
 - **Unencrypted connections:** unless the site is served over HTTPS, passwords cross the network in plain text. The login screen warns about this whenever the page isn't on HTTPS. Use a password you don't use anywhere else.
-- **Saves come from the browser:** the server rebuilds the game from the save the browser sends and doesn't check it, so a player can edit their own save, progress and achievements.
+- **Signed saves:** the server signs every save and achievement record it sends, and refuses one that was edited in the browser. A refused save stops the game with a message instead of loading.
 - **Security answers:** anyone who knows or can guess your answer can reset your password, so pick an answer that isn't public.
 
 ## Project Structure
@@ -64,13 +64,16 @@ Dead-But-Dreaming/
 │   ├── menu.py          # Great Old One names
 │   ├── achievements.py  # Achievement definitions and checks
 │   ├── accounts.py      # Optional logins and account storage
+│   ├── signing.py       # Signatures that stop edited saves loading
 │   ├── webapp.py        # Flask app and API
 │   ├── templates/       # Page markup
 │   └── static/          # CSS, display script, font, icon
+├── tests/               # pytest suite
 ├── docker/git-sync.sh   # Pulls the latest code when the container starts
 ├── Dockerfile
 ├── docker-compose.yml   # Local testing
-└── requirements.txt     # Flask, PyJWT and ronovo-portfolio-auth (portfolio login, security questions, login lock)
+├── requirements.txt     # Flask, PyJWT and ronovo-portfolio-auth (portfolio login, security questions, login lock)
+└── requirements-dev.txt # Adds pytest
 ```
 
 ## Running
@@ -82,6 +85,12 @@ pip install -r requirements.txt
 python Game_Logic/webapp.py
 ```
 Then open http://localhost:5000.
+
+### Tests
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
 
 ### With Docker
 ```bash

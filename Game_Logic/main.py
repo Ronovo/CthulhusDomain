@@ -5,7 +5,6 @@ from upgrades import Upgrade, UpgradeManager
 
 # Fields a save may set on a resource; the save comes from the browser, so nothing else is accepted
 SAVED_RESOURCE_FIELDS = {
-    "count": float,
     "level": int,
     "has_manager": bool,
     "is_unlocked": bool,
@@ -34,18 +33,31 @@ def round_cost(cost: float) -> float:
 @dataclass
 class Resource:
     name: str
-    base_cost: float
     base_production: float
     production_time: float
     manager_name: str
     unlock_cost: float
-    count: int = 0
     progress: float = 0
     is_processing: bool = False
     has_manager: bool = False
     level: int = 1
     manager_cost: float = 1000
     is_unlocked: bool = False
+
+def new_resources() -> Dict[str, Resource]:
+    """A world's resources before any difficulty scaling, with only Cultists unlocked."""
+    return {
+        "cultists": Resource("Cultists", 1, 2.0, "Cult Leader", unlock_cost=5, manager_cost=10, is_unlocked=True),
+        "ancient_tomes": Resource("Ancient Tomes", 5, 3.0, "Mad Librarian", unlock_cost=30, manager_cost=60),
+        "eldritch_artifacts": Resource("Eldritch Artifacts", 15, 4.0, "Relic Hunter", unlock_cost=200, manager_cost=400),
+        "sacrifices": Resource("Sacrifices", 50, 5.0, "High Priest", unlock_cost=1500, manager_cost=3000),
+        "dark_rituals": Resource("Dark Rituals", 200, 6.0, "Ritual Master", unlock_cost=10000, manager_cost=20000),
+        "cosmic_energy": Resource("Cosmic Energy", 750, 7.0, "Star Priest", unlock_cost=75000, manager_cost=150000),
+        "elder_signs": Resource("Elder Signs", 3000, 8.0, "Sign Keeper", unlock_cost=500000, manager_cost=1000000),
+        "dimensional_gates": Resource("Dimensional Gates", 10000, 9.0, "Gate Keeper", unlock_cost=3000000, manager_cost=6000000),
+        "star_spawn": Resource("Star Spawn", 50000, 10.0, "Spawn Master", unlock_cost=15000000, manager_cost=30000000),
+        "great_old_ones": Resource("Great Old Ones", 200000, 12.0, "Elder Priest", unlock_cost=60000000, manager_cost=120000000)
+    }
 
 class Game:
     def __init__(self, player_name: str = None, load_data: Dict = None, difficulty: str = DEFAULT_DIFFICULTY):
@@ -61,18 +73,7 @@ class Game:
         self.last_saved = time.time()
         self.dream_seconds = 0.0  # Time spent on the current world, including time the game was closed
 
-        self.resources = {
-            "cultists": Resource("Cultists", 10, 1, 2.0, "Cult Leader", unlock_cost=5, manager_cost=10, is_unlocked=True),
-            "ancient_tomes": Resource("Ancient Tomes", 50, 5, 3.0, "Mad Librarian", unlock_cost=30, manager_cost=60),
-            "eldritch_artifacts": Resource("Eldritch Artifacts", 200, 15, 4.0, "Relic Hunter", unlock_cost=200, manager_cost=400),
-            "sacrifices": Resource("Sacrifices", 1000, 50, 5.0, "High Priest", unlock_cost=1500, manager_cost=3000),
-            "dark_rituals": Resource("Dark Rituals", 5000, 200, 6.0, "Ritual Master", unlock_cost=10000, manager_cost=20000),
-            "cosmic_energy": Resource("Cosmic Energy", 20000, 750, 7.0, "Star Priest", unlock_cost=75000, manager_cost=150000),
-            "elder_signs": Resource("Elder Signs", 100000, 3000, 8.0, "Sign Keeper", unlock_cost=500000, manager_cost=1000000),
-            "dimensional_gates": Resource("Dimensional Gates", 500000, 10000, 9.0, "Gate Keeper", unlock_cost=3000000, manager_cost=6000000),
-            "star_spawn": Resource("Star Spawn", 2000000, 50000, 10.0, "Spawn Master", unlock_cost=15000000, manager_cost=30000000),
-            "great_old_ones": Resource("Great Old Ones", 10000000, 200000, 12.0, "Elder Priest", unlock_cost=60000000, manager_cost=120000000)
-        }
+        self.resources = new_resources()
         self.apply_difficulty()
 
         if load_data:
@@ -82,7 +83,8 @@ class Game:
         self.player_name = str(data["player_name"])
         self.sanity = float(data["sanity"])
         self.worlds_destroyed = int(data.get("worlds_destroyed", 0))
-        self.last_saved = float(data.get("last_saved", time.time()))
+        # A save can't be from the future: catching up to a later time would freeze the game until then.
+        self.last_saved = min(float(data.get("last_saved", time.time())), time.time())
         self.dream_seconds = float(data.get("dream_seconds", 0.0))
         devoured_seconds = data.get("devoured_seconds")
         self.devoured_seconds = None if devoured_seconds is None else float(devoured_seconds)
@@ -101,6 +103,13 @@ class Game:
             if upgrade_id in self.upgrade_manager.upgrades:
                 self.upgrade_manager.upgrades[upgrade_id].purchased = True
 
+    def progress(self) -> Tuple:
+        """Orders two copies of a world by how far along they are."""
+        purchases = sum(upgrade.purchased for upgrade in self.upgrade_manager.upgrades.values())
+        purchases += sum(resource.is_unlocked + resource.has_manager + resource.level
+                         for resource in self.resources.values())
+        return self.worlds_destroyed, self.devoured_seconds is not None, purchases, self.sanity
+
     def save_game_state(self) -> Dict:
         game_data = {
             "player_name": self.player_name,
@@ -117,7 +126,6 @@ class Game:
 
         for name, resource in self.resources.items():
             game_data["resources"][name] = {
-                "count": resource.count,
                 "level": resource.level,
                 "has_manager": resource.has_manager,
                 "is_unlocked": resource.is_unlocked,
@@ -132,16 +140,16 @@ class Game:
         return game_data
 
     def production_rate(self, resource: Resource) -> float:
-        production_multiplier, speed_multiplier = self.upgrade_manager.get_multiplier(resource.name)
+        production_multiplier, _ = self.upgrade_manager.get_multiplier(resource.name)
         return resource.base_production * resource.level * production_multiplier
 
     def cycle_time(self, resource: Resource) -> float:
-        production_multiplier, speed_multiplier = self.upgrade_manager.get_multiplier(resource.name)
+        _, speed_multiplier = self.upgrade_manager.get_multiplier(resource.name)
         return resource.production_time / speed_multiplier
 
     def update_resource(self, resource: Resource, dt: float):
         if resource.is_processing:
-            production_multiplier, speed_multiplier = self.upgrade_manager.get_multiplier(resource.name)
+            _, speed_multiplier = self.upgrade_manager.get_multiplier(resource.name)
 
             resource.progress += dt * speed_multiplier
             cycles_completed = int(resource.progress / resource.production_time)
@@ -150,9 +158,7 @@ class Game:
                 # Without a manager, one click is one cycle, however long the game was closed
                 if not resource.has_manager:
                     cycles_completed = 1
-                production = resource.base_production * resource.level * production_multiplier * cycles_completed
-                resource.count += production
-                self.sanity += production
+                self.sanity += self.production_rate(resource) * cycles_completed
                 resource.progress = resource.progress % resource.production_time
 
                 if not resource.has_manager:
@@ -242,26 +248,17 @@ class Game:
         self.devoured_seconds = None
         self.endless = False
 
-        for resource in self.resources.values():
-            resource.count = 0
-            resource.progress = 0
-            resource.is_processing = False
-            resource.has_manager = False
-            resource.level = 1
-            resource.is_unlocked = resource.name.lower().replace(" ", "_") == "cultists"
-
+        self.resources = new_resources()
         self.upgrade_manager = UpgradeManager()
-        self.apply_difficulty(include_resources=False)
+        self.apply_difficulty()
 
-    def apply_difficulty(self, include_resources: bool = True):
-        """Scale each tier's costs for the difficulty. A new world rebuilds only the upgrades, so it
-        skips the resources, whose costs were already scaled."""
+    def apply_difficulty(self):
+        """Scale each tier's costs for the difficulty."""
         growth = DIFFICULTIES[self.difficulty].growth
         for tier, (resource_key, resource) in enumerate(self.resources.items()):
             multiplier = growth ** tier
-            if include_resources:
-                resource.unlock_cost = round_cost(resource.unlock_cost * multiplier)
-                resource.manager_cost = round_cost(resource.manager_cost * multiplier)
+            resource.unlock_cost = round_cost(resource.unlock_cost * multiplier)
+            resource.manager_cost = round_cost(resource.manager_cost * multiplier)
             for upgrade in self.upgrade_manager.upgrades.values():
                 if upgrade.resource == resource_key:
                     upgrade.cost = round_cost(upgrade.cost * multiplier)

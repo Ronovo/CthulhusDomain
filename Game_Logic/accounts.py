@@ -5,7 +5,7 @@ import secrets
 import sqlite3
 import time
 from contextlib import contextmanager
-from typing import Dict, Iterable, Optional
+from typing import Callable, Dict, Iterable, Optional
 
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -36,12 +36,22 @@ CREATE TABLE IF NOT EXISTS saves (
     last_saved REAL NOT NULL,
     PRIMARY KEY (user_id, name)
 );
+CREATE TABLE IF NOT EXISTS deleted_saves (
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    name TEXT NOT NULL,
+    deleted_at REAL NOT NULL,
+    PRIMARY KEY (user_id, name)
+);
 CREATE TABLE IF NOT EXISTS records (
     user_id INTEGER PRIMARY KEY REFERENCES users(id),
     achievements TEXT NOT NULL,
     devoured TEXT NOT NULL
 );
 """
+
+
+# Worlds an account can keep. Saves arrive from the browser, so this stops one account filling the disk.
+MAX_SAVES = 50
 
 
 class AccountError(Exception):
@@ -181,19 +191,40 @@ class Accounts:
             db.execute("UPDATE users SET password_hash = ?, reset_failures = 0, reset_locked_until = 0 WHERE id = ?",
                        (generate_password_hash(new_password), user_id))
 
-    def store_save(self, user_id: int, save: Dict):
-        """Keep the newer copy when a save with this name is already stored"""
+    def store_save(self, user_id: int, save: Dict, rank: Callable[[Dict], tuple]):
+        """Keeps whichever copy of a save ranks higher when one with this name is already stored. A new name is
+        refused once the account holds MAX_SAVES. A copy last saved before its name was deleted stays deleted;
+        one saved after it is a new world and clears the deletion."""
         with self._db() as db:
+            deleted = db.execute("SELECT deleted_at FROM deleted_saves WHERE user_id = ? AND name = ?",
+                                 (user_id, save["player_name"])).fetchone()
+            if deleted is not None:
+                if save["last_saved"] <= deleted[0]:
+                    return
+                db.execute("DELETE FROM deleted_saves WHERE user_id = ? AND name = ?",
+                           (user_id, save["player_name"]))
+            stored = db.execute("SELECT data FROM saves WHERE user_id = ? AND name = ?",
+                                (user_id, save["player_name"])).fetchone()
+            if stored is None:
+                if db.execute("SELECT COUNT(*) FROM saves WHERE user_id = ?", (user_id,)).fetchone()[0] >= MAX_SAVES:
+                    return
+            elif rank(json.loads(stored[0])) > rank(save):
+                return
             db.execute(
                 """INSERT INTO saves (user_id, name, data, last_saved) VALUES (?, ?, ?, ?)
-                   ON CONFLICT (user_id, name) DO UPDATE SET data = excluded.data, last_saved = excluded.last_saved
-                   WHERE excluded.last_saved >= saves.last_saved""",
+                   ON CONFLICT (user_id, name) DO UPDATE SET data = excluded.data, last_saved = excluded.last_saved""",
                 (user_id, save["player_name"], json.dumps(save), save["last_saved"]),
             )
 
     def delete_save(self, user_id: int, name: str):
+        """Deletes the world and remembers that it was deleted, so another browser's copy doesn't bring it back."""
         with self._db() as db:
             db.execute("DELETE FROM saves WHERE user_id = ? AND name = ?", (user_id, name))
+            db.execute(
+                """INSERT INTO deleted_saves (user_id, name, deleted_at) VALUES (?, ?, ?)
+                   ON CONFLICT (user_id, name) DO UPDATE SET deleted_at = excluded.deleted_at""",
+                (user_id, name, time.time()),
+            )
 
     def store_record(self, user_id: int, achievements: Iterable[str], devoured: Dict[str, int]):
         """Combine achievements, and keep the higher devour count per difficulty so the same
@@ -224,4 +255,6 @@ class Accounts:
     def load(self, user_id: int) -> Dict:
         with self._db() as db:
             saves = db.execute("SELECT name, data FROM saves WHERE user_id = ?", (user_id,)).fetchall()
-        return {"saves": {name: json.loads(data) for name, data in saves}, **self.load_record(user_id)}
+            deleted = db.execute("SELECT name FROM deleted_saves WHERE user_id = ?", (user_id,)).fetchall()
+        return {"saves": {name: json.loads(data) for name, data in saves}, "deleted": sorted(name for name, in deleted),
+                **self.load_record(user_id)}

@@ -160,40 +160,28 @@
     }
 
     // Achievements and the devour tally belong to this browser, not to one save, so they survive
-    // deleting a world.
-    const ACHIEVEMENTS_KEY = "dead-but-dreaming:achievements";
-    const DEVOURED_KEY = "dead-but-dreaming:devoured";
+    // deleting a world. The server signs the record it sends, and sends it back with every request.
+    const RECORD_KEY = "dead-but-dreaming:record";
 
-    function readDevoured() {
+    function readRecord() {
         try {
-            const devoured = JSON.parse(localStorage.getItem(DEVOURED_KEY));
-            return devoured && typeof devoured === "object" && !Array.isArray(devoured) ? devoured : {};
+            const record = JSON.parse(localStorage.getItem(RECORD_KEY));
+            return record && Array.isArray(record.achievements) ? record : null;
         } catch {
-            return {};
+            return null;
         }
     }
 
-    function writeDevoured(devoured) {
+    function writeRecord(record) {
         try {
-            localStorage.setItem(DEVOURED_KEY, JSON.stringify(devoured));
+            localStorage.setItem(RECORD_KEY, JSON.stringify(record));
         } catch {
         }
     }
 
     function readAchievements() {
-        try {
-            const earned = JSON.parse(localStorage.getItem(ACHIEVEMENTS_KEY));
-            return Array.isArray(earned) ? earned : [];
-        } catch {
-            return [];
-        }
-    }
-
-    function addAchievements(ids) {
-        try {
-            localStorage.setItem(ACHIEVEMENTS_KEY, JSON.stringify([...new Set([...readAchievements(), ...ids])]));
-        } catch {
-        }
+        const record = readRecord();
+        return record ? record.achievements : [];
     }
 
     function markEarnedAchievements() {
@@ -291,22 +279,21 @@
         try {
             const recordOwner = localStorage.getItem(RECORD_OWNER_KEY);
             if (recordOwner && recordOwner !== account) {
-                localStorage.removeItem(ACHIEVEMENTS_KEY);
-                localStorage.removeItem(DEVOURED_KEY);
+                localStorage.removeItem(RECORD_KEY);
             }
         } catch {
         }
         const merged = await request(urls.syncUrl, {
-            saves, achievements: readAchievements(), devoured: readDevoured(),
+            saves, record: readRecord(),
         });
+        for (const name of merged.deleted) forgetLocalSave(name);
         const synced = readOwners();
         for (const remote of Object.values(merged.saves)) {
             writeSave(remote);
             synced[remote.player_name] = account;
         }
         writeOwners(synced);
-        addAchievements(merged.achievements);
-        writeDevoured(merged.devoured);
+        writeRecord(merged.record);
         try {
             localStorage.setItem(RECORD_OWNER_KEY, account);
         } catch {
@@ -491,18 +478,16 @@
             const data = await request(urls.playUrl, {
                 save,
                 actions: actions.map(({ type, target }) => ({ type, target })),
-                achievements: readAchievements(),
-                devoured: readDevoured(),
+                record: readRecord(),
                 backup,
             }, TICK_TIMEOUT_MS);
             if (mySession !== session) return;
             if (backup) lastBackup = Date.now();
             save = data.save;
             writeSave(save);
-            writeDevoured(data.devoured);
+            writeRecord(data.record);
             render(data.view);
             if (data.new_achievements.length) {
-                addAchievements(data.new_achievements.map((achievement) => achievement.id));
                 if (!$("achievements").hidden) markEarnedAchievements();
                 data.new_achievements.forEach(showToast);
             }
@@ -515,6 +500,11 @@
             if (resend) {
                 pending = actions.concat(pending);
                 retryNow = timedOut;
+            } else if (mySession === session) {
+                // The server answered with an error, so retrying the same save would only fail again.
+                stopGame();
+                show("main-menu");
+                $("menu-error").textContent = error.message;
             }
         } finally {
             if (mySession === session) busy = false;
@@ -528,6 +518,7 @@
     }
 
     function startGame(loaded) {
+        $("menu-error").textContent = "";
         save = loaded;
         lastBackup = Date.now();
         document.title = `Dead But Dreaming - ${save.player_name}`;
@@ -557,7 +548,7 @@
     window.addEventListener("pagehide", () => {
         if (!account || !save) return;
         const body = JSON.stringify({
-            saves: { [save.player_name]: save }, achievements: readAchievements(), devoured: readDevoured(),
+            saves: { [save.player_name]: save }, record: readRecord(),
         });
         navigator.sendBeacon(urls.syncUrl, new Blob([body], { type: "application/json" }));
     });

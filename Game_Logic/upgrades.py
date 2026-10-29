@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Callable
 
 @dataclass
 class Upgrade:
@@ -11,6 +10,15 @@ class Upgrade:
     resource: str
     purchased: bool = False
     
+# Each resource's upgrades: (type, multiplier, cost as a multiple of the resource's base upgrade cost)
+UPGRADE_STEPS = {
+    "speed_2x": ("speed", 2.0, 1.0),
+    "speed_3x": ("speed", 3.0, 3.0),
+    "speed_5x": ("speed", 5.0, 10.0),
+    "prod_2x": ("production", 2.0, 0.3),
+    "prod_5x": ("production", 5.0, 6.0),
+}
+
 class UpgradeManager:
     def __init__(self):
         self.upgrades = {}
@@ -105,53 +113,11 @@ class UpgradeManager:
         }
 
         for resource, base_cost in resource_base_costs.items():
-            upgrades = resource_upgrades[resource]
-            
-            self.upgrades[f"{resource}_speed_2x"] = Upgrade(
-                name=upgrades["speed_2x"][0],
-                description=upgrades["speed_2x"][1],
-                cost=base_cost * 1.0,
-                multiplier=2.0,
-                upgrade_type='speed',
-                resource=resource.lower()
-            )
-            
-            self.upgrades[f"{resource}_speed_3x"] = Upgrade(
-                name=upgrades["speed_3x"][0],
-                description=upgrades["speed_3x"][1],
-                cost=base_cost * 3.0,
-                multiplier=3.0,
-                upgrade_type='speed',
-                resource=resource.lower()
-            )
-            
-            self.upgrades[f"{resource}_speed_5x"] = Upgrade(
-                name=upgrades["speed_5x"][0],
-                description=upgrades["speed_5x"][1],
-                cost=base_cost * 10.0,
-                multiplier=5.0,
-                upgrade_type='speed',
-                resource=resource.lower()
-            )
-            
-            self.upgrades[f"{resource}_prod_2x"] = Upgrade(
-                name=upgrades["prod_2x"][0],
-                description=upgrades["prod_2x"][1],
-                cost=base_cost * 0.3,
-                multiplier=2.0,
-                upgrade_type='production',
-                resource=resource.lower()
-            )
-            
-            self.upgrades[f"{resource}_prod_5x"] = Upgrade(
-                name=upgrades["prod_5x"][0],
-                description=upgrades["prod_5x"][1],
-                cost=base_cost * 6.0,
-                multiplier=5.0,
-                upgrade_type='production',
-                resource=resource.lower()
-            )
-    
+            for step, (upgrade_type, multiplier, cost_factor) in UPGRADE_STEPS.items():
+                name, description = resource_upgrades[resource][step]
+                self.upgrades[f"{resource}_{step}"] = Upgrade(name, description, base_cost * cost_factor, multiplier,
+                                                              upgrade_type, resource)
+
     def can_purchase(self, upgrade_id: str, sanity: float) -> bool:
         upgrade = self.upgrades.get(upgrade_id)
         if not upgrade:
@@ -176,7 +142,7 @@ class UpgradeManager:
         # Convert display name to internal name format (lowercase, spaces to underscores)
         resource_name = resource_name.lower().replace(" ", "_")
         
-        for upgrade_id, upgrade in self.upgrades.items():
+        for upgrade in self.upgrades.values():
             if upgrade.purchased and upgrade.resource == resource_name:
                 if upgrade.upgrade_type == 'speed':
                     speed_multiplier *= upgrade.multiplier
