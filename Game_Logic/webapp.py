@@ -5,8 +5,8 @@ from typing import Dict, Optional
 
 from flask import Flask, abort, jsonify, redirect, render_template, request, session, url_for
 
-import portfolio_sso
-from security_questions import QUESTIONS
+from ronovo_portfolio_auth import portfolio_sso
+from ronovo_portfolio_auth.security_questions import QUESTIONS
 
 from accounts import AccountError, Accounts
 from achievements import ACHIEVEMENTS, PlayerRecord, new_achievements
@@ -149,7 +149,10 @@ def create_app() -> Flask:
 
     def current_user() -> Optional[int]:
         user_id = session.get("user_id")
-        if user_id is not None and accounts.username(user_id) is None:
+        if user_id is None:
+            return None
+        key = accounts.session_key(user_id)
+        if key is None or not secrets.compare_digest(session.get("session_key", ""), key):
             session.clear()
             return None
         return user_id
@@ -159,6 +162,7 @@ def create_app() -> Flask:
         session.permanent = True
         session["user_id"] = user_id
         session["username"] = username
+        session["session_key"] = accounts.session_key(user_id)
 
     def json_body() -> Dict:
         body = request.get_json(silent=True)
@@ -189,7 +193,7 @@ def create_app() -> Flask:
     def logged_in(user_id: int) -> Dict:
         username = accounts.username(user_id)
         log_in(user_id, username)
-        return jsonify(username=username, needs_security_question=not accounts.has_security_question(user_id))
+        return jsonify(username=username)
 
     portfolio_sso.add_flask_routes(app, "dead-but-dreaming", portfolio_login)
 
@@ -221,7 +225,7 @@ def create_app() -> Flask:
         user_id = accounts.portfolio_user(pending["sub"], pending["username"])
         username = accounts.username(user_id)
         log_in(user_id, username)
-        return jsonify(username=username, needs_security_question=False)
+        return jsonify(username=username)
 
     @app.get("/api/random-name")
     def api_random_name():
@@ -300,7 +304,6 @@ def create_app() -> Flask:
         log_in(user_id, username)
         return jsonify(username=username)
 
-    # Accounts made before security questions are asked to set one straight after logging in.
     @app.post("/api/login")
     def api_login():
         username, password = credentials()
@@ -309,18 +312,6 @@ def create_app() -> Flask:
         except AccountError as error:
             return jsonify(error=str(error)), 401
         return logged_in(user_id)
-
-    @app.post("/api/security-question")
-    def api_security_question():
-        user_id = current_user()
-        if user_id is None:
-            return jsonify(error="Not logged in"), 401
-        body = json_body()
-        try:
-            accounts.set_security_question(user_id, str(body.get("question", "")), str(body.get("answer", "")))
-        except AccountError as error:
-            return jsonify(error=str(error)), 400
-        return jsonify(saved=True)
 
     @app.post("/api/reset-question")
     def api_reset_question():

@@ -1,7 +1,7 @@
 // Display only: the game itself runs in Python (webapp.py). This keeps the save in localStorage,
 // sends it to the server with the player's clicks, and shows what comes back.
 (() => {
-    const SAVE_PREFIX = "cthulhus-dominion:save:";
+    const SAVE_PREFIX = "dead-but-dreaming:save:";
     const TICK_MS = 250;
     const urls = document.body.dataset;
     const $ = (id) => document.getElementById(id);
@@ -22,12 +22,41 @@
         }
     }
 
-    function deleteSave(name) {
+    function forgetLocalSave(name) {
         try {
             localStorage.removeItem(SAVE_PREFIX + name);
         } catch {
         }
+        const owners = readOwners();
+        delete owners[name];
+        writeOwners(owners);
+    }
+
+    function deleteSave(name) {
+        forgetLocalSave(name);
         if (account) request(urls.deleteSaveUrl, { name }).catch(console.error);
+    }
+
+    // Which account each save here came from, so on a shared browser one account's saves are never
+    // handed to the next account that logs in. A save made while logged out has no owner and joins
+    // whichever account logs in next.
+    const OWNERS_KEY = "dead-but-dreaming:save-owners";
+    const RECORD_OWNER_KEY = "dead-but-dreaming:record-owner";
+
+    function readOwners() {
+        try {
+            const owners = JSON.parse(localStorage.getItem(OWNERS_KEY));
+            return owners && typeof owners === "object" && !Array.isArray(owners) ? owners : {};
+        } catch {
+            return {};
+        }
+    }
+
+    function writeOwners(owners) {
+        try {
+            localStorage.setItem(OWNERS_KEY, JSON.stringify(owners));
+        } catch {
+        }
     }
 
     function listSaves() {
@@ -79,7 +108,7 @@
 
     // Style
 
-    const STYLE_KEY = "cthulhus-dominion:style";
+    const STYLE_KEY = "dead-but-dreaming:style";
     const stylePicker = $("style-picker");
 
     function hasStyle(style) {
@@ -132,8 +161,8 @@
 
     // Achievements and the devour tally belong to this browser, not to one save, so they survive
     // deleting a world.
-    const ACHIEVEMENTS_KEY = "cthulhus-dominion:achievements";
-    const DEVOURED_KEY = "cthulhus-dominion:devoured";
+    const ACHIEVEMENTS_KEY = "dead-but-dreaming:achievements";
+    const DEVOURED_KEY = "dead-but-dreaming:devoured";
 
     function readDevoured() {
         try {
@@ -249,23 +278,45 @@
     }
 
     async function syncAccount() {
+        const owners = readOwners();
         const saves = {};
         for (const name of listSaves()) {
+            if (owners[name] && owners[name] !== account) {
+                forgetLocalSave(name);
+                continue;
+            }
             const local = readSave(name);
             if (local) saves[name] = local;
+        }
+        try {
+            const recordOwner = localStorage.getItem(RECORD_OWNER_KEY);
+            if (recordOwner && recordOwner !== account) {
+                localStorage.removeItem(ACHIEVEMENTS_KEY);
+                localStorage.removeItem(DEVOURED_KEY);
+            }
+        } catch {
         }
         const merged = await request(urls.syncUrl, {
             saves, achievements: readAchievements(), devoured: readDevoured(),
         });
-        Object.values(merged.saves).forEach(writeSave);
+        const synced = readOwners();
+        for (const remote of Object.values(merged.saves)) {
+            writeSave(remote);
+            synced[remote.player_name] = account;
+        }
+        writeOwners(synced);
         addAchievements(merged.achievements);
         writeDevoured(merged.devoured);
+        try {
+            localStorage.setItem(RECORD_OWNER_KEY, account);
+        } catch {
+        }
     }
 
     async function finishLogin(data) {
         setAccount(data.username);
         await syncAccount();
-        show(data.needs_security_question ? "security" : save ? "game" : "main-menu");
+        show(save ? "game" : "main-menu");
     }
 
     async function submitLogin(url) {
@@ -365,19 +416,6 @@
         }
     });
     $("reset-back").addEventListener("click", () => show("login"));
-    $("security-form").addEventListener("submit", async (event) => {
-        event.preventDefault();
-        $("security-error").textContent = "";
-        try {
-            await request(urls.securityQuestionUrl, {
-                question: $("security-question").value, answer: $("security-answer").value,
-            });
-            $("security-answer").value = "";
-            show(save ? "game" : "main-menu");
-        } catch (error) {
-            $("security-error").textContent = error.message;
-        }
-    });
 
     $("login-warning").hidden = location.protocol === "https:";
     $("login-button").addEventListener("click", () => {

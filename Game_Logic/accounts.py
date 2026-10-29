@@ -1,3 +1,4 @@
+import hashlib
 import json
 import re
 import secrets
@@ -8,7 +9,8 @@ from typing import Dict, Iterable, Optional
 
 from werkzeug.security import check_password_hash, generate_password_hash
 
-import security_questions
+from ronovo_portfolio_auth import security_questions
+from ronovo_portfolio_auth.login_limiter import LockedOut, LoginLimiter
 
 USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_-]{3,20}$")
 MIN_PASSWORD_LENGTH = 8
@@ -20,7 +22,12 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY,
     username TEXT NOT NULL UNIQUE COLLATE NOCASE,
-    password_hash TEXT NOT NULL
+    password_hash TEXT NOT NULL,
+    portfolio_sub TEXT UNIQUE,
+    security_question TEXT,
+    security_answer_hash TEXT,
+    reset_failures INTEGER NOT NULL DEFAULT 0,
+    reset_locked_until REAL NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS saves (
     user_id INTEGER NOT NULL REFERENCES users(id),
@@ -35,14 +42,6 @@ CREATE TABLE IF NOT EXISTS records (
     devoured TEXT NOT NULL
 );
 """
-# Added after the first release, so they are created on older databases as well
-USER_COLUMNS = {
-    "portfolio_sub": "TEXT",
-    "security_question": "TEXT",
-    "security_answer_hash": "TEXT",
-    "reset_failures": "INTEGER NOT NULL DEFAULT 0",
-    "reset_locked_until": "REAL NOT NULL DEFAULT 0",
-}
 
 
 class AccountError(Exception):
@@ -58,14 +57,10 @@ class Accounts:
     def __init__(self, path: str, secret_key: str):
         self.path = path
         self.secret_key = secret_key.encode("utf-8")
+        self._logins = LoginLimiter()
         with self._db() as db:
             db.execute("PRAGMA journal_mode=WAL")
             db.executescript(SCHEMA)
-            existing = {row[1] for row in db.execute("PRAGMA table_info(users)")}
-            for column, kind in USER_COLUMNS.items():
-                if column not in existing:
-                    db.execute(f"ALTER TABLE users ADD COLUMN {column} {kind}")
-            db.execute("CREATE UNIQUE INDEX IF NOT EXISTS users_portfolio_sub ON users (portfolio_sub)")
 
     @contextmanager
     def _db(self):
@@ -97,10 +92,12 @@ class Accounts:
     def check_login(self, username: str, password: str) -> int:
         with self._db() as db:
             row = db.execute("SELECT id, password_hash FROM users WHERE username = ?", (username,)).fetchone()
-        if row is None:
-            check_password_hash(DUMMY_HASH, password)
-            raise AccountError("Wrong username or password")
-        if not check_password_hash(row[1], password):
+        try:
+            valid = self._logins.attempt(username, lambda: check_password_hash(row[1] if row else DUMMY_HASH, password)
+                                         and row is not None)
+        except LockedOut as locked:
+            raise AccountError(str(locked)) from None
+        if not valid:
             raise AccountError("Wrong username or password")
         return row[0]
 
@@ -108,6 +105,13 @@ class Accounts:
         with self._db() as db:
             row = db.execute("SELECT username FROM users WHERE id = ?", (user_id,)).fetchone()
         return row[0] if row else None
+
+    def session_key(self, user_id: int) -> Optional[str]:
+        """Changes whenever the password does, so a login session stored with it ends when the password is
+        reset. None when the account no longer exists."""
+        with self._db() as db:
+            row = db.execute("SELECT password_hash FROM users WHERE id = ?", (user_id,)).fetchone()
+        return hashlib.sha256(row[0].encode("utf-8")).hexdigest()[:16] if row else None
 
     def linked_user(self, sub: str) -> Optional[int]:
         """The account linked to a portfolio account, or None"""
@@ -143,19 +147,6 @@ class Accounts:
                 # The name is taken, or a second login for this portfolio account got there first
                 n += 1
 
-    def has_security_question(self, user_id: int) -> bool:
-        with self._db() as db:
-            row = db.execute("SELECT security_answer_hash FROM users WHERE id = ?", (user_id,)).fetchone()
-        return bool(row and row[0])
-
-    def set_security_question(self, user_id: int, question: str, answer: str):
-        problem = security_questions.problem(question, answer)
-        if problem:
-            raise AccountError(problem)
-        with self._db() as db:
-            db.execute("UPDATE users SET security_question = ?, security_answer_hash = ? WHERE id = ?",
-                       (question, generate_password_hash(security_questions.normalize_answer(answer)), user_id))
-
     def security_question(self, username: str) -> str:
         with self._db() as db:
             row = db.execute("SELECT security_question FROM users WHERE username = ? AND security_answer_hash IS NOT NULL",
@@ -166,21 +157,25 @@ class Accounts:
         """Sets a new password when the security answer is right. Too many wrong answers lock resets for a while."""
         check_password(new_password)
         with self._db() as db:
-            row = db.execute("""SELECT id, security_answer_hash, reset_failures, reset_locked_until FROM users
+            row = db.execute("""SELECT id, security_answer_hash FROM users
                                 WHERE username = ? AND security_answer_hash IS NOT NULL""", (username,)).fetchone()
         if row is None:
             check_password_hash(DUMMY_HASH, answer)
             raise AccountError("That answer is wrong")
-        user_id, answer_hash, failures, locked_until = row
-        if time.time() < locked_until:
+        user_id, answer_hash = row
+        # Each try is counted before the answer is checked, in one statement, so answers sent at the same
+        # moment can't all slip in under the limit.
+        with self._db() as db:
+            counted = db.execute("""UPDATE users SET reset_failures = reset_failures + 1
+                                    WHERE id = ? AND reset_locked_until <= ? RETURNING reset_failures""",
+                                 (user_id, time.time())).fetchone()
+        if counted is None or counted[0] > security_questions.MAX_RESET_FAILURES:
             raise AccountError("Too many wrong answers. Try again in 15 minutes.")
         if not check_password_hash(answer_hash, security_questions.normalize_answer(answer)):
-            failures += 1
-            locked = failures >= security_questions.MAX_RESET_FAILURES
-            with self._db() as db:
-                db.execute("UPDATE users SET reset_failures = ?, reset_locked_until = ? WHERE id = ?",
-                           (0 if locked else failures,
-                            time.time() + security_questions.RESET_LOCK_SECONDS if locked else 0, user_id))
+            if counted[0] == security_questions.MAX_RESET_FAILURES:
+                with self._db() as db:
+                    db.execute("UPDATE users SET reset_failures = 0, reset_locked_until = ? WHERE id = ?",
+                               (time.time() + security_questions.RESET_LOCK_SECONDS, user_id))
             raise AccountError("That answer is wrong")
         with self._db() as db:
             db.execute("UPDATE users SET password_hash = ?, reset_failures = 0, reset_locked_until = 0 WHERE id = ?",

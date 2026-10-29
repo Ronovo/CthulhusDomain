@@ -49,14 +49,13 @@ class Resource:
 
 class Game:
     def __init__(self, player_name: str = None, load_data: Dict = None, difficulty: str = DEFAULT_DIFFICULTY):
-        # Game state
         self.player_name = player_name
         self.difficulty = (load_data or {}).get("difficulty", difficulty)
         if self.difficulty not in DIFFICULTIES:
             self.difficulty = DEFAULT_DIFFICULTY
         self.sanity = 0
         self.upgrade_manager = UpgradeManager()
-        self.worlds_destroyed = 0  # Counter for worlds destroyed
+        self.worlds_destroyed = 0
         self.devoured_seconds = None  # Dream time when the world was devoured; None until then
         self.endless = False  # Chose to keep feeding on the devoured world
         self.last_saved = time.time()
@@ -82,25 +81,22 @@ class Game:
     def load_game_state(self, data: Dict):
         self.player_name = str(data["player_name"])
         self.sanity = float(data["sanity"])
-        self.worlds_destroyed = int(data.get("worlds_destroyed", 0))  # Load worlds destroyed count
+        self.worlds_destroyed = int(data.get("worlds_destroyed", 0))
         self.last_saved = float(data.get("last_saved", time.time()))
         self.dream_seconds = float(data.get("dream_seconds", 0.0))
         devoured_seconds = data.get("devoured_seconds")
         self.devoured_seconds = None if devoured_seconds is None else float(devoured_seconds)
         self.endless = bool(data.get("endless", False))
 
-        # Load resources
         for resource_name, resource_data in data.get("resources", {}).items():
             if resource_name in self.resources:
                 resource = self.resources[resource_name]
                 for key, field_type in SAVED_RESOURCE_FIELDS.items():
                     if key in resource_data:
                         setattr(resource, key, field_type(resource_data[key]))
-                # Start processing if resource has a manager
                 if resource.has_manager and resource.is_unlocked:
                     resource.is_processing = True
 
-        # Load purchased upgrades
         for upgrade_id in data.get("upgrades", {}):
             if upgrade_id in self.upgrade_manager.upgrades:
                 self.upgrade_manager.upgrades[upgrade_id].purchased = True
@@ -110,7 +106,7 @@ class Game:
             "player_name": self.player_name,
             "difficulty": self.difficulty,
             "sanity": self.sanity,
-            "worlds_destroyed": self.worlds_destroyed,  # Save worlds destroyed count
+            "worlds_destroyed": self.worlds_destroyed,
             "last_saved": self.last_saved,
             "dream_seconds": self.dream_seconds,
             "devoured_seconds": self.devoured_seconds,
@@ -119,7 +115,6 @@ class Game:
             "upgrades": {}
         }
 
-        # Save resources
         for name, resource in self.resources.items():
             game_data["resources"][name] = {
                 "count": resource.count,
@@ -130,7 +125,6 @@ class Game:
                 "progress": resource.progress
             }
 
-        # Save purchased upgrades
         for upgrade_id, upgrade in self.upgrade_manager.upgrades.items():
             if upgrade.purchased:
                 game_data["upgrades"][upgrade_id] = True
@@ -147,10 +141,8 @@ class Game:
 
     def update_resource(self, resource: Resource, dt: float):
         if resource.is_processing:
-            # Apply speed multiplier to dt
             production_multiplier, speed_multiplier = self.upgrade_manager.get_multiplier(resource.name)
 
-            # For very high speeds, we'll process multiple cycles at once
             resource.progress += dt * speed_multiplier
             cycles_completed = int(resource.progress / resource.production_time)
 
@@ -218,10 +210,8 @@ class Game:
         available_upgrades = []
         resource_next_upgrades = {}
 
-        # First, group upgrades by resource
         for upgrade_id, upgrade in self.upgrade_manager.upgrades.items():
             if not upgrade.purchased:
-                # Find the resource key that matches the upgrade's resource name
                 for resource_key, resource in self.resources.items():
                     if resource_key.lower() == upgrade.resource and resource.is_unlocked:
                         if resource_key not in resource_next_upgrades:
@@ -229,16 +219,12 @@ class Game:
                         resource_next_upgrades[resource_key].append((upgrade_id, upgrade))
                         break
 
-        # Then, select only the next upgrade for each resource
         for resource_key, upgrades in resource_next_upgrades.items():
-            # Sort upgrades by type (speed first, then production)
             speed_upgrades = [u for u in upgrades if "speed" in u[1].upgrade_type.lower()]
             prod_upgrades = [u for u in upgrades if "production" in u[1].upgrade_type.lower()]
 
-            # Add next speed upgrade if available
             if speed_upgrades:
                 available_upgrades.append(speed_upgrades[0])
-            # Add next production upgrade if available
             if prod_upgrades:
                 available_upgrades.append(prod_upgrades[0])
 
@@ -256,7 +242,6 @@ class Game:
         self.devoured_seconds = None
         self.endless = False
 
-        # Reset resources
         for resource in self.resources.values():
             resource.count = 0
             resource.progress = 0
@@ -265,7 +250,6 @@ class Game:
             resource.level = 1
             resource.is_unlocked = resource.name.lower().replace(" ", "_") == "cultists"
 
-        # Reset upgrades
         self.upgrade_manager = UpgradeManager()
         self.apply_difficulty(include_resources=False)
 

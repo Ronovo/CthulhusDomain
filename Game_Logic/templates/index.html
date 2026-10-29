@@ -17,7 +17,6 @@
       data-logout-url="{{ url_for('api_logout') }}"
       data-sync-url="{{ url_for('api_sync') }}"
       data-delete-save-url="{{ url_for('api_delete_save') }}"
-      data-security-question-url="{{ url_for('api_security_question') }}"
       data-reset-question-url="{{ url_for('api_reset_question') }}"
       data-reset-password-url="{{ url_for('api_reset_password') }}"
       {%- if portfolio %} data-portfolio-login-url="{{ url_for('sso_login') }}"
@@ -91,20 +90,6 @@
             <button type="button" class="menu-button" id="reset-back">Back</button>
         </form>
         <p id="reset-error" class="error" role="alert"></p>
-    </section>
-
-    <section id="security" class="screen menu" hidden>
-        <h1 class="title">Security Question</h1>
-        <p class="login-note">Pick a security question for your account. You need its answer to reset your password.</p>
-        <form id="security-form" class="menu-form">
-            <select id="security-question" class="login-input" aria-label="Security question">
-                <option value="">Security question</option>
-                {% for question in questions %}<option>{{ question }}</option>{% endfor %}
-            </select>
-            <input id="security-answer" class="login-input" maxlength="100" autocomplete="off" placeholder="Security answer" aria-label="Security answer">
-            <button type="submit" class="menu-button">Save</button>
-        </form>
-        <p id="security-error" class="error" role="alert"></p>
     </section>
 
     <section id="achievements" class="screen menu" hidden>

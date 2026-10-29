@@ -26,8 +26,6 @@ USER dreamer
 VOLUME ["/app/data"]
 EXPOSE 8000
 
-# Game state comes from the browser and accounts are in SQLite, so any number of workers or threads can serve
-# a request. Threaded workers keep each browser's connection open between its updates instead of opening a
-# new one four times a second, which matters when players reach the server through a NAT or VPN hop.
+# Threaded workers keep each browser's connection open between its updates, four times a second.
 ENTRYPOINT ["git-sync"]
 CMD ["gunicorn", "--chdir", "Game_Logic", "--bind", "0.0.0.0:8000", "--worker-class", "gthread", "--workers", "2", "--threads", "4", "--keep-alive", "5", "--preload", "webapp:create_app()"]

@@ -196,7 +196,7 @@
 }
 
 /* Layout standards: labels sit left, numbers sit right with fixed-width digits so they line up
-   down a column. Text sizes 48 / 32 / 28 / 22 / 20 / 17; spacing in steps of 8 / 12 / 16 / 24. */
+   down a column. Spacing comes in steps of 8 / 12 / 16 / 24. */
 
 * {
     box-sizing: border-box;

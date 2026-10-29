@@ -19,19 +19,18 @@ class UpgradeManager:
     def _initialize_upgrades(self):
         # Base costs for each resource; they grow faster than production, so later tiers take longer
         resource_base_costs = {
-            "cultists": 50,  # Base production: 1
-            "ancient_tomes": 600,  # Base production: 5
-            "eldritch_artifacts": 4000,  # Base production: 15
-            "sacrifices": 30000,  # Base production: 50
-            "dark_rituals": 150000,  # Base production: 200
-            "cosmic_energy": 800000,  # Base production: 750
-            "elder_signs": 5000000,  # Base production: 3000
-            "dimensional_gates": 25000000,  # Base production: 10000
-            "star_spawn": 120000000,  # Base production: 50000
-            "great_old_ones": 250000000,  # Base production: 200000
+            "cultists": 50,
+            "ancient_tomes": 600,
+            "eldritch_artifacts": 4000,
+            "sacrifices": 30000,
+            "dark_rituals": 150000,
+            "cosmic_energy": 800000,
+            "elder_signs": 5000000,
+            "dimensional_gates": 25000000,
+            "star_spawn": 120000000,
+            "great_old_ones": 250000000,
         }
 
-        # Resource-specific upgrade names and descriptions
         resource_upgrades = {
             "cultists": {
                 "speed_2x": ("Chants of R'lyeh", "2x Speed for Cultists"),
@@ -105,18 +104,16 @@ class UpgradeManager:
             }
         }
 
-        # Generate upgrades for each resource
         for resource, base_cost in resource_base_costs.items():
             upgrades = resource_upgrades[resource]
             
-            # Add speed upgrades
             self.upgrades[f"{resource}_speed_2x"] = Upgrade(
                 name=upgrades["speed_2x"][0],
                 description=upgrades["speed_2x"][1],
                 cost=base_cost * 1.0,
                 multiplier=2.0,
                 upgrade_type='speed',
-                resource=resource.lower()  # Ensure resource name is lowercase
+                resource=resource.lower()
             )
             
             self.upgrades[f"{resource}_speed_3x"] = Upgrade(
@@ -137,7 +134,6 @@ class UpgradeManager:
                 resource=resource.lower()
             )
             
-            # Add production upgrades
             self.upgrades[f"{resource}_prod_2x"] = Upgrade(
                 name=upgrades["prod_2x"][0],
                 description=upgrades["prod_2x"][1],
@@ -180,7 +176,6 @@ class UpgradeManager:
         # Convert display name to internal name format (lowercase, spaces to underscores)
         resource_name = resource_name.lower().replace(" ", "_")
         
-        # Apply relevant upgrades based on resource name
         for upgrade_id, upgrade in self.upgrades.items():
             if upgrade.purchased and upgrade.resource == resource_name:
                 if upgrade.upgrade_type == 'speed':
