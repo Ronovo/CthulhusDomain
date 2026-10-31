@@ -5,9 +5,10 @@ import pytest
 
 import accounts
 import webapp
-from achievements import ACHIEVEMENTS, PlayerRecord
+from achievements import ACHIEVEMENT_GROUPS, ACHIEVEMENTS, PlayerRecord
 from helpers import ANSWER, PASSWORD, new_game, play, register, signer, sync
-from main import DIFFICULTIES, Game, new_resources
+from main import DIFFICULTIES, MODES, Game, new_resources, world_cost
+from menu import GREAT_OLD_ONES
 from signing import Signer
 
 
@@ -38,7 +39,7 @@ def test_a_new_game_plays_and_comes_back_signed(client):
     reply = play(client, save, actions=[{"type": "resource", "target": "cultists"}]).get_json()
     assert reply["save"]["signature"] != save["signature"]
     assert reply["view"]
-    assert set(reply["record"]) == {"achievements", "devours", "signature"}
+    assert set(reply["record"]) == {"achievements", "devours", "names", "signature"}
 
 
 def test_an_edited_save_is_refused(client):
@@ -123,6 +124,15 @@ def test_replaying_a_save_counts_its_devour_once(client):
     for _ in range(3):
         record = play(client, save, record, [{"type": "upgrade", "target": last}]).get_json()["record"]
     assert len(record["devours"]) == 1
+
+
+def test_a_record_holding_a_devour_still_counts_on_the_next_tick(client):
+    save, last = almost_devoured()
+    reply = play(client, save, None, [{"type": "upgrade", "target": last}]).get_json()
+    assert reply["new_achievements"]
+    again = play(client, reply["save"], reply["record"]).get_json()
+    assert again["new_achievements"] == []
+    assert again["record"]["devours"] == reply["record"]["devours"]
 
 
 def test_two_browsers_devours_add_up_on_the_account(client):
@@ -266,6 +276,142 @@ def test_every_difficulty_means_a_devour_on_each_one():
     world = "0" * 16
     assert not every(game, PlayerRecord(earned={f"devour_{d}" for d in DIFFICULTIES}, devours={(world, 1, "eternal")}))
     assert every(game, PlayerRecord(earned=set(), devours={(world, n, d) for n, d in enumerate(DIFFICULTIES, 1)}))
+
+
+def test_a_stale_browser_record_does_not_announce_what_the_account_already_holds(client):
+    register(client)
+    game = Game(load_data=signer.verify(new_game(client)))
+    game.resources["cultists"].has_manager = True
+    hired = signer.sign(game.save_game_state())
+    first = play(client, hired, None).get_json()
+    assert [achievement["id"] for achievement in first["new_achievements"]] == ["cult_leader"]
+    # A second browser whose record never heard of it
+    again = play(client, hired, None).get_json()
+    assert again["new_achievements"] == []
+    assert "cult_leader" in again["record"]["achievements"]
+
+
+def test_the_accounts_devours_count_toward_totals_on_a_play_tick(client):
+    register(client)
+    devours = [[f"{n:016x}", n, "quick"] for n in range(1, 10)]
+    sync(client, record=signer.sign({"achievements": [], "devours": devours}))
+    save, last = almost_devoured()
+    reply = play(client, save, None, [{"type": "upgrade", "target": last}]).get_json()
+    assert "total_10" in [achievement["id"] for achievement in reply["new_achievements"]]
+    assert len(reply["record"]["devours"]) == 10
+
+
+def test_only_ticks_with_something_to_announce_or_store_read_the_account(client, monkeypatch):
+    reads = []
+    original = accounts.Accounts.record
+    monkeypatch.setattr(accounts.Accounts, "record", lambda self, user_id: reads.append(user_id) or original(self, user_id))
+    save, last = almost_devoured()
+    play(client, save, None, [{"type": "upgrade", "target": last}])
+    assert reads == []
+    register(client)
+    quiet = new_game(client)
+    play(client, quiet, None)
+    assert reads == []
+    play(client, save, None, [{"type": "upgrade", "target": last}])
+    assert len(reads) == 1
+
+
+def test_devouring_as_a_named_great_old_one_is_remembered(client):
+    save, last = almost_devoured("cthulhu")
+    reply = play(client, save, None, [{"type": "upgrade", "target": last}]).get_json()
+    assert reply["record"]["names"] == ["Cthulhu"]
+    save, last = almost_devoured("Azathoth")
+    reply = play(client, save, reply["record"], [{"type": "upgrade", "target": last}]).get_json()
+    assert reply["record"]["names"] == ["Cthulhu"]
+
+
+def test_the_whole_pantheon_needs_every_named_great_old_one():
+    pantheon = ACHIEVEMENTS["all_names"].earned
+    game = Game("Dagon", difficulty="quick")
+    assert not pantheon(game, PlayerRecord(earned=set(), devours=set(), names=set(GREAT_OLD_ONES[:-1])))
+    assert pantheon(game, PlayerRecord(earned=set(), devours=set(), names=set(GREAT_OLD_ONES)))
+
+
+def test_world_achievements_fire_on_their_state():
+    game = Game("x", difficulty="short")
+    earned = lambda key: ACHIEVEMENTS[key].earned(game, PlayerRecord(earned=set(), devours=set()))
+    assert not any(earned(key) for key in ("all_managers", "endless", "sanity_million", "short_streak", "quick_fast"))
+    for resource in game.resources.values():
+        resource.has_manager = True
+    game.sanity = 1_000_000
+    game.devoured_seconds = 19 * 60
+    game.endless = True
+    game.worlds_destroyed = 3
+    assert all(earned(key) for key in ("all_managers", "endless", "sanity_million", "short_streak"))
+    assert not earned("quick_fast")
+    game.difficulty = "quick"
+    assert earned("quick_fast")
+    game.devoured_seconds = 20 * 60
+    assert not earned("quick_fast")
+
+
+def test_a_new_game_carries_its_mode(client):
+    assert new_game(client)["mode"] == "idle"
+    response = client.post("/api/new-game", json={"name": "Azathoth", "difficulty": "quick", "mode": "clicker"})
+    clicker = response.get_json()["save"]
+    assert clicker["mode"] == "clicker"
+    view = play(client, clicker).get_json()["view"]
+    assert (view["mode"], view["clicker"]) == ("Clicker Mode", True)
+    assert client.post("/api/new-game", json={"name": "Azathoth", "mode": "frantic"}).status_code == 400
+
+
+def test_timed_achievements_fire_in_their_own_mode_and_difficulty():
+    nothing = PlayerRecord(earned=set(), devours=set())
+    for difficulty in DIFFICULTIES:
+        for mode in MODES:
+            achievement = ACHIEVEMENTS[f"{difficulty}_fast" + ("_clicker" if mode == "clicker" else "")]
+            assert (achievement.difficulty, achievement.mode) == (difficulty, mode)
+            game = Game("x", difficulty=difficulty, mode=mode)
+            assert not achievement.earned(game, nothing)
+            game.devoured_seconds = 1.0
+            assert achievement.earned(game, nothing)
+            other = Game("x", difficulty=difficulty, mode="idle" if mode == "clicker" else "clicker")
+            other.devoured_seconds = 1.0
+            assert not achievement.earned(other, nothing)
+    assert ACHIEVEMENTS["quick_fast"].description == "Devour a world on Quick and Easy in under 20 minutes in Idle Mode"
+    assert ACHIEVEMENTS["short_fast_clicker"].description.endswith("in under 1 hour in Clicker Mode")
+    assert ACHIEVEMENTS["recommended_fast"].description.endswith("in under 5 hours in Idle Mode")
+
+
+def test_achievements_are_grouped_by_difficulty():
+    assert list(ACHIEVEMENT_GROUPS) == ["all", *DIFFICULTIES]
+    assert sum(len(members) for _, members in ACHIEVEMENT_GROUPS.values()) == len(ACHIEVEMENTS) == 35
+    assert ACHIEVEMENT_GROUPS["short"][0] == "Short Dream"
+    assert "devour_short" in ACHIEVEMENT_GROUPS["short"][1]
+    assert "total_10" in ACHIEVEMENT_GROUPS["all"][1]
+
+
+def test_stats_need_a_login(client):
+    assert client.get("/api/stats").status_code == 401
+
+
+def test_stats_add_up_lifetime_sanity_by_difficulty(client):
+    register(client)
+    assert client.get("/api/stats").get_json() == {"rows": [], "total": {"sanity": 0, "worlds": 0}}
+    # A world in progress: 7 held, Ancient Tomes unlocked for 30, the Cult Leader hired for 10
+    game = Game(load_data=signer.verify(new_game(client, "Hydra", "recommended")))
+    game.sanity = 7
+    game.resources["ancient_tomes"].is_unlocked = True
+    game.resources["cultists"].has_manager = True
+    sync(client, signer.sign(game.save_game_state()))
+    # A devoured world in endless mode counts through its devour, plus what it still holds
+    save, last = almost_devoured("Dagon")
+    endless = play(client, save, None, [{"type": "upgrade", "target": last}, {"type": "endless"}]).get_json()["save"]
+    # A devoured world that was deleted still counts through its devour
+    save, last = almost_devoured("Nyarlathotep")
+    gone = play(client, save, None, [{"type": "upgrade", "target": last}]).get_json()["save"]
+    sync(client, deleted=[gone["world_id"]])
+    quick = int(2 * world_cost("quick") + endless["sanity"])
+    assert client.get("/api/stats").get_json() == {
+        "rows": [{"difficulty": "Quick and Easy", "sanity": quick, "worlds": 2},
+                 {"difficulty": "Recommended", "sanity": 47, "worlds": 0}],
+        "total": {"sanity": quick + 47, "worlds": 2},
+    }
 
 
 def test_every_resource_has_a_full_set_of_upgrades():

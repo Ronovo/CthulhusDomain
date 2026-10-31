@@ -102,13 +102,14 @@
         const response = await fetch(url, options);
         if (!response.ok) {
             const data = await response.json().catch(() => ({}));
-            throw new Error(data.error || `${url} returned ${response.status}`);
+            throw Object.assign(new Error(data.error || `${url} returned ${response.status}`), { status: response.status });
         }
         return response.json();
     }
 
     function show(screen) {
         for (const section of document.querySelectorAll(".screen")) section.hidden = section.id !== screen;
+        $("main-menu-button").hidden = screen === "main-menu";
     }
 
     function el(tag, className, text = "") {
@@ -172,7 +173,9 @@
 
     async function newGame(name) {
         try {
-            const data = await request(urls.newGameUrl, { name, difficulty: $("difficulty").value });
+            const data = await request(urls.newGameUrl, {
+                name, difficulty: $("difficulty").value, mode: document.querySelector('input[name="mode"]:checked').value,
+            });
             startGame(data.save);
         } catch (error) {
             show("name-entry");
@@ -197,12 +200,51 @@
         return record ? record.achievements : [];
     }
 
+    // One difficulty group at a time, or every group with none pressed; pressing a group again clears it.
+    let groupFilter = "";
+
+    function filterAchievements() {
+        const state = $("state-filter").value;
+        const mode = $("mode-filter").value;
+        let shown = 0;
+        for (const group of document.querySelectorAll(".achievement-group")) {
+            const items = group.querySelectorAll(".achievement");
+            let visible = 0;
+            let earned = 0;
+            for (const item of items) {
+                const isEarned = item.classList.contains("earned");
+                earned += isEarned;
+                const show = (!groupFilter || groupFilter === group.dataset.group)
+                    && (!state || (state === "earned") === isEarned)
+                    && (!mode || !item.dataset.mode || item.dataset.mode === mode);
+                item.hidden = !show;
+                visible += show;
+            }
+            setText(group.querySelector(".group-count"), `${earned} / ${items.length}`);
+            group.hidden = visible === 0;
+            shown += visible;
+        }
+        $("no-achievements").hidden = shown > 0;
+    }
+
     function markEarnedAchievements() {
         const earned = new Set(readAchievements());
         for (const item of document.querySelectorAll("[data-achievement]")) {
             item.classList.toggle("earned", earned.has(item.dataset.achievement));
         }
+        filterAchievements();
     }
+
+    for (const button of document.querySelectorAll(".filter-button")) {
+        button.addEventListener("click", () => {
+            groupFilter = groupFilter === button.dataset.group ? "" : button.dataset.group;
+            for (const other of document.querySelectorAll(".filter-button")) {
+                other.setAttribute("aria-pressed", String(other.dataset.group === groupFilter));
+            }
+            filterAchievements();
+        });
+    }
+    for (const id of ["state-filter", "mode-filter"]) $(id).addEventListener("change", filterAchievements);
 
     function showAchievements() {
         markEarnedAchievements();
@@ -215,7 +257,8 @@
         const close = el("button", "toast-close", "×");
         close.type = "button";
         close.setAttribute("aria-label", "Close");
-        toast.append(close, el("span", "toast-title", "Achievement unlocked"), el("span", "toast-name", achievement.name));
+        toast.append(close, el("span", "medal"), el("span", "toast-title", "Achievement unlocked"),
+            el("span", "toast-name", achievement.name));
         $("toasts").append(toast);
         const timeout = setTimeout(() => toast.remove(), 5000);
         close.addEventListener("click", () => {
@@ -256,6 +299,27 @@
     });
     $("load-game").addEventListener("click", showLoadList);
     $("show-achievements").addEventListener("click", showAchievements);
+
+    async function showStats() {
+        try {
+            const data = await request(urls.statsUrl);
+            $("stats-rows").replaceChildren(...data.rows.map((row) => {
+                const tr = el("tr", "");
+                tr.append(el("th", "", row.difficulty), el("td", "number", formatNumber(row.sanity)),
+                    el("td", "number", formatNumber(row.worlds)));
+                return tr;
+            }));
+            setText($("stats-sanity"), formatNumber(data.total.sanity));
+            setText($("stats-worlds"), formatNumber(data.total.worlds));
+            $("no-stats").hidden = data.rows.length > 0;
+            $("stats-table").hidden = data.rows.length === 0;
+            show("stats");
+        } catch (error) {
+            $("menu-error").textContent = error.message;
+        }
+    }
+
+    $("show-stats").addEventListener("click", showStats);
     $("random-name").addEventListener("click", async () => {
         try {
             $("name-input").value = (await request(urls.randomNameUrl)).name;
@@ -286,6 +350,7 @@
         $("login-button").hidden = Boolean(username);
         $("portfolio-button").hidden = Boolean(username) || !urls.portfolioLoginUrl;
         $("logout-button").hidden = !username;
+        $("show-stats").hidden = !username;
     }
 
     async function syncAccount() {
@@ -494,29 +559,34 @@
         const backup = Boolean(account) && Date.now() - lastBackup >= BACKUP_MS;
         let retryNow = false;
         let resend = false;
+        const record = readRecord();
         try {
             const data = await request(urls.playUrl, {
                 save,
                 actions: actions.map(({ type, target }) => ({ type, target })),
-                record: readRecord(),
+                record,
                 backup,
             }, TICK_TIMEOUT_MS);
             if (mySession !== session) return;
             if (backup) lastBackup = Date.now();
             save = data.save;
             writeSave(save);
-            writeRecord(data.record);
-            render(data.view);
+            // Another tab may have written a newer record meanwhile, so a record this tick didn't change
+            // isn't written back over it.
+            if (!record || data.record.signature !== record.signature) writeRecord(data.record);
+            render(data.view, new Set(actions.filter((action) => action.type === "resource").map((action) => action.target)));
             if (data.new_achievements.length) {
                 if (!$("achievements").hidden) markEarnedAchievements();
                 data.new_achievements.forEach(showToast);
             }
         } catch (error) {
             console.error(error);
-            // A stalled or dropped connection, not an answer from the server: the clicks go out again.
+            // A stalled or dropped connection, or a gateway error while the server restarts, not an answer from
+            // the game: the clicks go out again.
             // The server works from the save sent with each request, so resending can't apply them twice.
             const timedOut = error.name === "TimeoutError";
-            resend = mySession === session && (timedOut || error instanceof TypeError);
+            const restarting = [502, 503, 504].includes(error.status);
+            resend = mySession === session && (timedOut || restarting || error instanceof TypeError);
             if (resend) {
                 pending = actions.concat(pending);
                 retryNow = timedOut;
@@ -558,11 +628,16 @@
         rows = null;
         lastView = null;
         upgradeKey = "";
+        upgradeButtons = {};
         resourceOptions = "";
         onEnding = false;
         document.title = "Dead But Dreaming";
     }
 
+    $("main-menu-button").addEventListener("click", () => {
+        if (save) stopGame();
+        show("main-menu");
+    });
     document.addEventListener("visibilitychange", tick);
     // sendBeacon is delivered even while the page is closing, so the account gets the final save.
     window.addEventListener("pagehide", () => {
@@ -572,9 +647,18 @@
         });
         navigator.sendBeacon(urls.syncUrl, new Blob([body], { type: "application/json" }));
     });
+    // Taps on one resource closer together than this are dropped, which keeps a hammered button to about
+    // the server's cap of three taps per tick.
+    const TAP_MS = 80;
     $("game").addEventListener("click", (event) => {
         const button = event.target.closest("[data-action]");
-        if (button) act(button.dataset.action, button.dataset.target, button);
+        if (!button) return;
+        if (button.dataset.action === "resource") {
+            const row = rows[button.dataset.target];
+            if (Date.now() - row.lastTap < TAP_MS) return;
+            row.lastTap = Date.now();
+        }
+        act(button.dataset.action, button.dataset.target, button);
     });
     $("new-world").addEventListener("click", () => act("reset"));
     $("endless").addEventListener("click", () => act("endless"));
@@ -608,22 +692,22 @@
             button.append(el("span", "resource-name", resource.name), detail, progress);
             manager.append(el("span", "manager-name", resource.manager_name), managerCost);
             row.append(button, manager);
-            rows[resource.key] = { button, detail, fill, manager, managerCost, barKey: "", lastProgress: 0 };
+            rows[resource.key] = { button, detail, fill, manager, managerCost, barKey: "", lastProgress: 0, lastTap: 0 };
             return row;
         }));
     }
 
     // The server only reports progress a few times a second, so a running bar is a CSS animation
     // lasting one cycle, started at the reported progress. It restarts only when the cycle changes
-    // (a speed upgrade, a manager, or a new click), so it doesn't jump between updates.
-    function renderBar(row, resource) {
+    // (a speed upgrade, a manager, or a new click) or a tap moved it, so it doesn't jump between updates.
+    function renderBar(row, resource, tapped) {
         let key = "idle";
         if (resource.unlocked && resource.processing) {
             key = resource.solid_bar ? "solid" : `run ${resource.cycle_seconds} ${resource.has_manager}`;
         }
         const clickedAgain = !resource.has_manager && resource.progress < row.lastProgress;
         row.lastProgress = resource.progress;
-        if (key === row.barKey && !clickedAgain) return;
+        if (key === row.barKey && !clickedAgain && !tapped) return;
         row.barKey = key;
 
         const fill = row.fill;
@@ -705,10 +789,10 @@
         }
     }
 
-    function render(view) {
+    function render(view, tapped = new Set()) {
         setText($("player-name"), `Great Old One: ${view.player_name}`);
-        setText($("sanity"), `Sanity: ${formatNumber(view.sanity)}`);
-        setText($("difficulty-label"), `Difficulty: ${view.difficulty}`);
+        setText($("sanity"), formatNumber(view.sanity));
+        setText($("difficulty-label"), `Difficulty: ${view.difficulty} in ${view.mode}`);
         setText($("dream-time"), `Time Since Dream Began: ${view.dream_time}`);
         setText($("worlds-devoured"), `Worlds Devoured: ${formatNumber(view.worlds_devoured)}`);
         $("devoured-label").hidden = !view.endless;
@@ -721,6 +805,7 @@
         if (view.ending) {
             setText($("ending-time"), view.devoured_time);
             setText($("ending-difficulty"), view.difficulty_name);
+            setText($("ending-mode"), view.mode);
             setText($("ending-worlds"), formatNumber(view.worlds_devoured));
         }
 
@@ -739,7 +824,7 @@
                 setText(row.detail, `Unlock: ${formatNumber(resource.unlock_cost)}`);
                 row.manager.hidden = true;
             }
-            renderBar(row, resource);
+            renderBar(row, resource, view.clicker && tapped.has(resource.key));
         }
 
         lastView = view;

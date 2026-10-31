@@ -3,15 +3,15 @@ import secrets
 import time
 from typing import Dict, Optional
 
-from flask import Flask, abort, jsonify, redirect, render_template, request, session, url_for
+from flask import Flask, abort, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 
 from ronovo_portfolio_auth import portfolio_sso
 from ronovo_portfolio_auth.security_questions import QUESTIONS
 
 from accounts import MAX_DELETED, AccountError, Accounts
-from achievements import ACHIEVEMENTS, PlayerRecord, new_achievements
-from main import DEFAULT_DIFFICULTY, DIFFICULTIES, WORLD_ID_PATTERN, Game
-from menu import GREAT_OLD_ONES, MAX_NAME_LENGTH, random_name
+from achievements import ACHIEVEMENT_GROUPS, ACHIEVEMENTS, PlayerRecord, new_achievements, pending_achievements
+from main import DEFAULT_DIFFICULTY, DEFAULT_MODE, DIFFICULTIES, MODES, WORLD_ID_PATTERN, Game, world_cost
+from menu import GREAT_OLD_ONES, MAX_NAME_LENGTH, great_old_one, random_name
 from signing import Signer
 
 # A cycle shorter than this is too fast to animate, so its bar is drawn solid
@@ -25,7 +25,9 @@ EDITED_SAVE = "This save was changed outside the game, so it can't be loaded."
 BAD_SAVE_ERRORS = (KeyError, TypeError, ValueError, AttributeError, OverflowError)
 PORTFOLIO_LOGIN_EXPIRED = "Log in with your portfolio account again."
 
-DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data"))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_DIR = os.environ.get("DATA_DIR", os.path.join(ROOT, "data"))
+COVERAGE_DIR = os.path.join(ROOT, "coverage")
 
 
 def load_secret_key() -> str:
@@ -65,11 +67,18 @@ def read_player_record(record: Optional[Dict]) -> PlayerRecord:
     record = record or {}
     earned = record.get("achievements")
     devours = record.get("devours")
+    names = record.get("names")
     return PlayerRecord(
         earned={achievement_id for achievement_id in earned if isinstance(achievement_id, str)
                 and achievement_id in ACHIEVEMENTS} if isinstance(earned, list) else set(),
         devours={tuple(entry) for entry in devours if is_devour(entry)} if isinstance(devours, list) else set(),
+        names={name for name in names if name in GREAT_OLD_ONES} if isinstance(names, list) else set(),
     )
+
+
+def stored_record(stored: Dict) -> PlayerRecord:
+    """The record an account holds, as Accounts.record and Accounts.load return it"""
+    return PlayerRecord(earned=set(stored["achievements"]), devours=set(stored["devours"]), names=set(stored["names"]))
 
 
 def save_rank(save: Dict) -> tuple:
@@ -147,6 +156,8 @@ def build_view(game: Game) -> Dict:
         "upgrades": upgrades,
         "difficulty_name": DIFFICULTIES[game.difficulty].name,
         "difficulty": f"{DIFFICULTIES[game.difficulty].name} ({DIFFICULTIES[game.difficulty].estimate})",
+        "mode": MODES[game.mode].name,
+        "clicker": game.mode == "clicker",
         "dream_time": format_duration(game.dream_seconds),
         "ending": game.devoured_seconds is not None and not game.endless,
         "endless": game.endless,
@@ -189,13 +200,17 @@ def create_app() -> Flask:
     signer = Signer(app.config["SECRET_KEY"])
 
     def json_body() -> Dict:
-        body = request.get_json(silent=True)
+        try:
+            body = request.get_json(silent=True)
+        except RecursionError:
+            abort(400)
         if not isinstance(body, dict):
             abort(400)
         return body
 
     def signed_record(player: PlayerRecord) -> Dict:
-        return signer.sign({"achievements": sorted(player.earned), "devours": sorted(player.devours)})
+        return signer.sign({"achievements": sorted(player.earned), "devours": sorted(player.devours),
+                            "names": sorted(player.names)})
 
     def credentials():
         body = json_body()
@@ -228,7 +243,8 @@ def create_app() -> Flask:
     def index():
         return render_template("index.html", max_name_length=MAX_NAME_LENGTH, great_old_ones=GREAT_OLD_ONES,
                                difficulties=DIFFICULTIES, default_difficulty=DEFAULT_DIFFICULTY,
-                               achievements=ACHIEVEMENTS, portfolio=portfolio_sso.enabled(), questions=QUESTIONS,
+                               modes=MODES, default_mode=DEFAULT_MODE,
+                               groups=ACHIEVEMENT_GROUPS, portfolio=portfolio_sso.enabled(), questions=QUESTIONS,
                                portfolio_url=portfolio_sso.portfolio_url() if portfolio_sso.enabled() else "")
 
     @app.post("/api/portfolio/link")
@@ -260,9 +276,11 @@ def create_app() -> Flask:
         body = json_body()
         name = str(body.get("name", "")).strip()
         difficulty = body.get("difficulty", DEFAULT_DIFFICULTY)
-        if not name or len(name) > MAX_NAME_LENGTH or not isinstance(difficulty, str) or difficulty not in DIFFICULTIES:
+        mode = body.get("mode", DEFAULT_MODE)
+        if not name or len(name) > MAX_NAME_LENGTH or not isinstance(difficulty, str) or difficulty not in DIFFICULTIES \
+                or not isinstance(mode, str) or mode not in MODES:
             abort(400)
-        return jsonify(save=signer.sign(Game(name, difficulty=difficulty).save_game_state()))
+        return jsonify(save=signer.sign(Game(name, difficulty=difficulty, mode=mode).save_game_state()))
 
     # The browser sends its save and any clicks since the last call; the game catches up to now,
     # applies the clicks in order, and sends back the new save for the browser to keep.
@@ -293,22 +311,48 @@ def create_app() -> Flask:
 
         player = read_player_record(signer.verify(body.get("record")))
         player.devours.update(game.devoured_now)
+        if game.devoured_now and great_old_one(game.player_name):
+            player.names.add(great_old_one(game.player_name))
+
+        # A logged-in account is read and written on the browser's 30 second backup, on real progress and when
+        # there is something to announce; every other tick leaves the database alone. Another browser may have
+        # earned achievements this one's record doesn't know about, so the account's record is merged in before
+        # anything is announced, and the reply carries the merged record.
+        changed = progress_marker(game) != progress_before
+        user_id = current_user() if body.get("backup") is True or changed or pending_achievements(game, player) else None
+        if user_id is not None:
+            player.merge(stored_record(accounts.record(user_id)))
         new = [{"id": achievement_id,
                 "name": ACHIEVEMENTS[achievement_id].name,
                 "description": ACHIEVEMENTS[achievement_id].description}
                for achievement_id in new_achievements(game, player)]
 
-        # A logged-in account is written on the browser's 30 second backup and on real progress;
-        # every other tick leaves the database alone.
         save = game.save_game_state()
-        if body.get("backup") is True or new or progress_marker(game) != progress_before:
-            user_id = current_user()
-            if user_id is not None:
-                accounts.store_save(user_id, save, save_rank, save_started)
-                accounts.store_record(user_id, player.earned, player.devours)
+        if user_id is not None:
+            accounts.store_save(user_id, save, save_rank, save_started)
+            accounts.store_record(user_id, player.earned, player.devours, player.names)
 
         return jsonify(save=signer.sign(save), view=build_view(game), new_achievements=new,
                        record=signed_record(player))
+
+    # Lifetime sanity per difficulty: each devour in the record stands for a full world's spend, so a devoured
+    # save adds only what it still holds, and a world in progress adds what it holds and has spent.
+    @app.get("/api/stats")
+    def api_stats():
+        user_id = current_user()
+        if user_id is None:
+            return jsonify(error="Not logged in"), 401
+        stored = accounts.load(user_id)
+        player = stored_record(stored)
+        sanity = {difficulty: player.devoured(difficulty) * world_cost(difficulty) for difficulty in DIFFICULTIES}
+        for save in stored["saves"].values():
+            game = Game(load_data=save)
+            sanity[game.difficulty] += game.sanity if game.devoured_seconds is not None else game.sanity_gathered()
+        rows = [{"difficulty": DIFFICULTIES[difficulty].name, "sanity": int(sanity[difficulty]),
+                 "worlds": player.devoured(difficulty)}
+                for difficulty in DIFFICULTIES if sanity[difficulty] or player.devoured(difficulty)]
+        return jsonify(rows=rows, total={"sanity": sum(row["sanity"] for row in rows),
+                                         "worlds": sum(row["worlds"] for row in rows)})
 
     @app.get("/api/account")
     def api_account():
@@ -354,6 +398,13 @@ def create_app() -> Flask:
             return jsonify(error=str(error)), 400
         return jsonify(reset=True)
 
+    @app.get("/coverage/", defaults={"path": ""})
+    @app.get("/coverage/<path:path>")
+    def coverage(path):
+        if not path or path.endswith("/"):
+            path += "index.html"
+        return send_from_directory(COVERAGE_DIR, path)
+
     @app.post("/api/logout")
     def api_logout():
         session.clear()
@@ -382,13 +433,12 @@ def create_app() -> Flask:
                 except BAD_SAVE_ERRORS:
                     continue
         player = read_player_record(signer.verify(body.get("record")))
-        accounts.store_record(user_id, player.earned, player.devours)
+        accounts.store_record(user_id, player.earned, player.devours, player.names)
         if body.get("reply") is False:
             return "", 204
         stored = accounts.load(user_id)
-        record = PlayerRecord(earned=set(stored["achievements"]), devours=set(stored["devours"]))
         return jsonify(saves={name: signer.sign(save) for name, save in stored["saves"].items()},
-                       deleted=stored["deleted"], record=signed_record(record))
+                       deleted=stored["deleted"], record=signed_record(stored_record(stored)))
 
     return app
 

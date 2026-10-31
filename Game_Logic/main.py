@@ -1,6 +1,7 @@
 import re
 import secrets
 import time
+from collections import Counter
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
 from upgrades import Upgrade, UpgradeManager
@@ -29,11 +30,28 @@ class Difficulty:
 
 DIFFICULTIES = {
     "quick": Difficulty("Quick and Easy", "about 15-20 min", 0.62),
+    "short": Difficulty("Short Dream", "about 1 hour", 0.80),
     "recommended": Difficulty("Recommended", "about 4-5 hours", 1.0),
     "long_haul": Difficulty("Long Haul", "about 20 hours", 1.23),
     "eternal": Difficulty("Eternal", "about 60-80 hours", 1.45),
 }
 DEFAULT_DIFFICULTY = "recommended"
+
+
+@dataclass
+class Mode:
+    name: str
+    reason: str
+
+# How a world is played. In Clicker Mode a tap on a working resource adds TAP_BOOST of a cycle, at most
+# MAX_TAPS_PER_TICK times per resource in one request, which is about 12 taps a second.
+MODES = {
+    "idle": Mode("Idle Mode", "The cult works at its own pace. For leaving the dream running."),
+    "clicker": Mode("Clicker Mode", "Tap a resource while it works to hurry it along. For sitting down and playing."),
+}
+DEFAULT_MODE = "idle"
+TAP_BOOST = 0.05
+MAX_TAPS_PER_TICK = 3
 
 def round_cost(cost: float) -> float:
     """Round to 2 significant figures so scaled prices stay readable"""
@@ -70,11 +88,17 @@ def new_resources() -> Dict[str, Resource]:
     return {resource.key: resource for resource in resources}
 
 class Game:
-    def __init__(self, player_name: str = None, load_data: Dict = None, difficulty: str = DEFAULT_DIFFICULTY):
+    def __init__(self, player_name: str = None, load_data: Dict = None, difficulty: str = DEFAULT_DIFFICULTY,
+                 mode: str = DEFAULT_MODE):
         self.player_name = player_name
         self.difficulty = load_data["difficulty"] if load_data else difficulty
         if self.difficulty not in DIFFICULTIES:
             raise ValueError(f"Unknown difficulty {self.difficulty!r}")
+        # Saves from before there were modes have none, and play as Idle Mode does
+        self.mode = load_data.get("mode", DEFAULT_MODE) if load_data else mode
+        if self.mode not in MODES:
+            raise ValueError(f"Unknown mode {self.mode!r}")
+        self.taps = Counter()  # Taps on each resource in this request, capped at MAX_TAPS_PER_TICK
         self.world_id = new_world_id()
         self.sanity = 0
         self.worlds_destroyed = 0
@@ -130,6 +154,7 @@ class Game:
             "player_name": self.player_name,
             "world_id": self.world_id,
             "difficulty": self.difficulty,
+            "mode": self.mode,
             "sanity": self.sanity,
             "worlds_destroyed": self.worlds_destroyed,
             "last_saved": self.last_saved,
@@ -141,6 +166,15 @@ class Game:
             "upgrades": {upgrade_id: True for upgrade_id, upgrade in self.upgrade_manager.upgrades.items()
                          if upgrade.purchased},
         }
+
+    def sanity_gathered(self) -> float:
+        """Everything this world has produced: what it holds plus what its unlocks, managers and upgrades cost"""
+        free = {key for key, resource in new_resources().items() if resource.is_unlocked}
+        spent = sum(resource.unlock_cost for key, resource in self.resources.items()
+                    if resource.is_unlocked and key not in free)
+        spent += sum(resource.manager_cost for resource in self.resources.values() if resource.has_manager)
+        spent += sum(upgrade.cost for upgrade in self.upgrade_manager.upgrades.values() if upgrade.purchased)
+        return self.sanity + spent
 
     def production_rate(self, resource: Resource) -> float:
         production_multiplier, _ = self.upgrade_manager.get_multiplier(resource.key)
@@ -188,6 +222,16 @@ class Game:
         elif not resource.is_processing:
             resource.is_processing = True
             resource.progress = 0
+        elif self.mode == "clicker":
+            self.tap(resource)
+
+    def tap(self, resource: Resource):
+        """Hurries a working resource along by TAP_BOOST of a cycle, paying out any cycle that completes"""
+        if self.taps[resource.key] >= MAX_TAPS_PER_TICK:
+            return
+        self.taps[resource.key] += 1
+        resource.progress += resource.production_time * TAP_BOOST
+        self.update_resource(resource, 0)
 
     def hire_manager(self, resource_key: str):
         resource = self.resources.get(resource_key)
@@ -255,3 +299,13 @@ class Game:
             resource.manager_cost = round_cost(resource.manager_cost * multiplier)
             for upgrade in self.upgrade_manager.for_resource(resource_key):
                 upgrade.cost = round_cost(upgrade.cost * multiplier)
+
+
+def world_cost(difficulty: str) -> float:
+    """What devouring a world on a difficulty costs in total"""
+    game = Game(difficulty=difficulty)
+    for resource in game.resources.values():
+        resource.is_unlocked = resource.has_manager = True
+    for upgrade in game.upgrade_manager.upgrades.values():
+        upgrade.purchased = True
+    return game.sanity_gathered()

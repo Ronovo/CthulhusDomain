@@ -12,7 +12,7 @@ def _canonical(value: Any) -> Any:
     # as a float, which both sides read back to the same value.
     if isinstance(value, dict):
         return {key: _canonical(item) for key, item in value.items()}
-    if isinstance(value, list):
+    if isinstance(value, (list, tuple)):
         return [_canonical(item) for item in value]
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         return float(value)
@@ -37,6 +37,6 @@ class Signer:
         data = {key: value for key, value in signed.items() if key != SIGNATURE}
         try:
             expected = self._signature(data)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, RecursionError):
             return None
         return data if hmac.compare_digest(signed[SIGNATURE], expected) else None

@@ -169,3 +169,7 @@ cython_debug/
 
 # Account database and generated session key
 /data/
+
+# Test coverage reports and the browser tests' tools
+coverage/
+node_modules/

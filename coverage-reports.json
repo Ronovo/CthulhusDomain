@@ -1,0 +1,10 @@
+{
+  "title": "Dead But Dreaming",
+  "source": "https://github.com/Ronovo/Dead-But-Dreaming",
+  "reports": [
+    { "label": "Python server", "path": "python/", "summary": "status.json", "functions": "functions.json", "format": "coverage.py",
+      "about": "Game_Logic/, the game and the web app, measured with coverage.py" },
+    { "label": "JavaScript client", "path": "js/", "summary": "coverage-summary.json", "format": "istanbul",
+      "about": "Game_Logic/static/js/play.js, measured with Vitest" }
+  ]
+}

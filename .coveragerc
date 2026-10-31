@@ -1,0 +1,16 @@
+[run]
+branch = True
+source = Game_Logic
+
+[report]
+fail_under = 100
+show_missing = True
+skip_covered = True
+exclude_also =
+    if __name__ == .__main__.:
+
+[html]
+directory = coverage/python
+extra_css = coverage-index/coverage-py.css
+skip_covered = False
+skip_empty = True

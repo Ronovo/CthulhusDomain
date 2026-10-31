@@ -16,6 +16,7 @@
       data-login-url="{{ url_for('api_login') }}"
       data-logout-url="{{ url_for('api_logout') }}"
       data-sync-url="{{ url_for('api_sync') }}"
+      data-stats-url="{{ url_for('api_stats') }}"
       data-reset-question-url="{{ url_for('api_reset_question') }}"
       data-reset-password-url="{{ url_for('api_reset_password') }}"
       {%- if portfolio %} data-portfolio-login-url="{{ url_for('sso_login') }}"
@@ -23,6 +24,7 @@
       data-portfolio-new-url="{{ url_for('api_portfolio_new') }}"
       data-portfolio-url="{{ portfolio_url }}"{% endif %}>
     <div class="style-bar">
+        <button type="button" class="small-button home-button" id="main-menu-button" hidden>Main Menu</button>
         <span id="account-name" class="account-name" hidden></span>
         <button type="button" class="small-button" id="login-button">Log In</button>
         <button type="button" class="small-button" id="portfolio-button" hidden>Log In with Portfolio Account</button>
@@ -40,6 +42,7 @@
         <button type="button" class="menu-button" id="new-game">New Game</button>
         <button type="button" class="menu-button" id="load-game">Load Game</button>
         <button type="button" class="menu-button" id="show-achievements">Achievements</button>
+        <button type="button" class="menu-button" id="show-stats" hidden>Statistics</button>
         <p id="menu-error" class="error" role="alert"></p>
     </section>
 
@@ -50,7 +53,7 @@
             <input id="login-username" class="login-input" maxlength="20" autocomplete="username" placeholder="Username" aria-label="Username">
             <input id="login-password" class="login-input" type="password" autocomplete="current-password" placeholder="Password" aria-label="Password">
             <button type="submit" class="menu-button">Log In</button>
-            <p class="login-note">To create an account, also pick a security question. You need its answer to reset your password.</p>
+            <p class="menu-note">To create an account, also pick a security question. You need its answer to reset your password.</p>
             <select id="login-question" class="login-input" aria-label="Security question">
                 <option value="">Security question</option>
                 {% for question in questions %}<option>{{ question }}</option>{% endfor %}
@@ -61,12 +64,12 @@
             <button type="button" class="menu-button" id="login-back">Back</button>
         </form>
         <p id="login-error" class="error" role="alert"></p>
-        <p class="login-note">Your saves stay in this browser too.</p>
+        <p class="menu-note">Your saves stay in this browser too.</p>
     </section>
 
     <section id="account-link" class="screen menu" hidden>
         <h1 class="title">Link Your Account</h1>
-        <p class="login-note">This is the first time <strong id="account-link-name"></strong> has logged in here. If you
+        <p class="menu-note">This is the first time <strong id="account-link-name"></strong> has logged in here. If you
             already have a Dead But Dreaming account, log in to it once to link it. After that, your portfolio account
             opens it on any device.</p>
         <form id="account-link-form" class="menu-form">
@@ -83,7 +86,7 @@
         <h1 class="title">Reset Password</h1>
         <form id="reset-form" class="menu-form">
             <input id="reset-username" class="login-input" maxlength="20" autocomplete="username" placeholder="Username" aria-label="Username">
-            <p id="reset-question" class="login-note" hidden></p>
+            <p id="reset-question" class="menu-note" hidden></p>
             <input id="reset-answer" class="login-input" maxlength="100" autocomplete="off" placeholder="Security answer" aria-label="Security answer" hidden>
             <input id="reset-password" class="login-input" type="password" autocomplete="new-password" placeholder="New password" aria-label="New password" hidden>
             <button type="submit" class="menu-button" id="reset-submit">Next</button>
@@ -94,15 +97,59 @@
 
     <section id="achievements" class="screen menu" hidden>
         <h1 class="title">Achievements</h1>
-        <ul class="achievement-list">
-            {% for key, achievement in achievements.items() %}
-            <li class="achievement" data-achievement="{{ key }}">
-                <span class="achievement-name">{{ achievement.name }}</span>
-                <span class="achievement-desc">{{ achievement.description }}</span>
-            </li>
+        <div class="achievement-filters">
+            <div class="filter-row" role="group" aria-label="Difficulty">
+                {% for key, (title, members) in groups.items() %}
+                <button type="button" class="filter-button" data-group="{{ key }}" aria-pressed="false">{{ title }}</button>
+                {% endfor %}
+            </div>
+            <select id="state-filter" aria-label="Earned">
+                <option value="">Earned or not</option>
+                <option value="earned">Earned</option>
+                <option value="locked">Not yet</option>
+            </select>
+            <select id="mode-filter" aria-label="Mode">
+                <option value="">Either mode</option>
+                {% for key, mode in modes.items() %}
+                <option value="{{ key }}">{{ mode.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="achievement-groups">
+            {% for key, (title, members) in groups.items() %}
+            <section class="achievement-group" data-group="{{ key }}">
+                <h2 class="group-title">{{ title }} <span class="group-count number"></span></h2>
+                <ul class="achievement-list">
+                    {% for id, achievement in members.items() %}
+                    <li class="achievement" data-achievement="{{ id }}" data-mode="{{ achievement.mode or '' }}">
+                        <span class="medal" aria-hidden="true"></span>
+                        <span class="achievement-text">
+                            <span class="achievement-name">{{ achievement.name }}</span>
+                            <span class="achievement-desc">{{ achievement.description }}</span>
+                        </span>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </section>
             {% endfor %}
-        </ul>
+        </div>
+        <p id="no-achievements" class="menu-note" hidden>No achievements match</p>
         <button type="button" class="menu-button" id="achievements-back">Back to Menu</button>
+    </section>
+
+    <section id="stats" class="screen menu" hidden>
+        <h1 class="title">Statistics</h1>
+        <p id="no-stats" class="menu-note" hidden>Nothing yet. Dream a little first.</p>
+        <table id="stats-table" class="stats-table" hidden>
+            <thead>
+                <tr><th>Difficulty</th><th>Sanity</th><th>Worlds Devoured</th></tr>
+            </thead>
+            <tbody id="stats-rows"></tbody>
+            <tfoot>
+                <tr><th>Total</th><td id="stats-sanity" class="number"></td><td id="stats-worlds" class="number"></td></tr>
+            </tfoot>
+        </table>
+        <button type="button" class="menu-button back">Back to Menu</button>
     </section>
 
     <section id="name-entry" class="screen menu" hidden>
@@ -118,6 +165,20 @@
                     {% endfor %}
                 </select>
             </label>
+            <div class="mode-field" role="radiogroup" aria-label="Mode">
+                <span>Mode</span>
+                <div class="mode-options">
+                    {% for key, mode in modes.items() %}
+                    <label class="mode-option">
+                        <input type="radio" class="mode-input" name="mode" value="{{ key }}"{% if key == default_mode %} checked{% endif %}>
+                        <span class="mode-card">
+                            <span class="mode-name">{{ mode.name }}</span>
+                            <span class="mode-reason">{{ mode.reason }}</span>
+                        </span>
+                    </label>
+                    {% endfor %}
+                </div>
+            </div>
             <button type="submit" class="menu-button">Confirm</button>
             <button type="button" class="menu-button back">Back to Menu</button>
         </form>
@@ -134,7 +195,7 @@
     <section id="game" class="screen game" hidden>
         <header class="game-header">
             <h1 id="player-name" class="player-name"></h1>
-            <p id="sanity" class="sanity number"></p>
+            <p class="sanity"><span class="sanity-label">Sanity</span><span id="sanity" class="sanity-value number"></span></p>
         </header>
         <div class="board">
             <div id="resources" class="resources"></div>
@@ -182,7 +243,7 @@
 
     <section id="ending" class="screen menu" hidden>
         <h1 class="title">The world is devoured.</h1>
-        <p class="ending-text">Your dream lasted <span id="ending-time" class="number"></span> on <span id="ending-difficulty"></span>.</p>
+        <p class="ending-text">Your dream lasted <span id="ending-time" class="number"></span> on <span id="ending-difficulty"></span> in <span id="ending-mode"></span>.</p>
         <p class="ending-text">Worlds devoured: <span id="ending-worlds" class="number"></span></p>
         <div class="menu-form">
             <button type="button" class="menu-button" id="new-world">Begin a New World</button>

@@ -14,7 +14,8 @@ It runs in the browser on a Python/Flask server.
 - Two types of upgrades per resource:
   - Speed upgrades (2x, 3x, 5x)
   - Production upgrades (2x, 5x)
-- Four difficulties, from Quick and Easy (about 15-20 minutes) to an eternal run
+- Five difficulties, from Quick and Easy (about 15-20 minutes) to an eternal run
+- Each world is Idle Mode or Clicker Mode: in Clicker Mode, tapping a working resource hurries it along
 - Multiple world system:
   - Buy every upgrade and hire every manager to devour the current world
   - Then keep going in Endless Mode, or let Azathoth reset the world for a new run
@@ -69,12 +70,15 @@ Dead-But-Dreaming/
 │   ├── webapp.py        # Flask app and API
 │   ├── templates/       # Page markup
 │   └── static/          # CSS, display script, font, icon
-├── tests/               # pytest suite
+├── tests/               # pytest suite; js/ holds the display script's Vitest tests
+├── coverage-index/      # The test coverage landing page, the ronovos-coverage-index submodule
+├── coverage-reports.json # This repo's entry for that page: its name and reports
 ├── docker/git-sync.sh   # Pulls the latest code when the container starts
 ├── Dockerfile
 ├── docker-compose.yml   # Local testing
 ├── requirements.txt     # Flask, PyJWT and ronovo-portfolio-auth (portfolio login, security questions, login lock)
-└── requirements-dev.txt # Adds pytest
+├── requirements-dev.txt # Adds pytest and coverage
+└── package.json         # The display script's test tools (Vitest, jsdom)
 ```
 
 ## Running
@@ -92,6 +96,22 @@ Then open http://localhost:5000. A run from source keeps its accounts and genera
 pip install -r requirements-dev.txt
 pytest
 ```
+The display script has its own tests, run with Vitest on Node.js after `npm install` once:
+```bash
+npm test
+```
+
+### Coverage
+```bash
+python -m coverage run -m pytest
+python -m coverage report
+python -m coverage html
+npm run coverage
+```
+The HTML reports go to `coverage/python` and `coverage/js`, and the coverage commands fail below 100%. The Docker
+image builds both reports and serves them at `/coverage/`, under the landing page in `coverage-index/`, the
+`ronovos-coverage-index` submodule, with this repo's `coverage-reports.json`. Failing tests or low coverage don't
+stop the image build; the reports show what is missing.
 
 ### With Docker
 ```bash
@@ -117,6 +137,7 @@ When `REPO_URL` is set (the image sets it to this repository), the container upd
 
 ## How to Play
 - Click on resources to start gathering them
+- In Clicker Mode, keep tapping a working resource to hurry it along
 - Purchase managers to automate resource collection
 - Buy upgrades to increase speed and production
 - Buy every upgrade and hire every manager to devour the world

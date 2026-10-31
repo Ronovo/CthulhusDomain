@@ -45,6 +45,11 @@ CREATE TABLE IF NOT EXISTS records (
     achievements TEXT NOT NULL,
     devours TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS devoured_as (
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    name TEXT NOT NULL,
+    PRIMARY KEY (user_id, name)
+);
 """
 
 
@@ -254,28 +259,35 @@ class Accounts:
             for world_id in world_ids:
                 _forget(db, user_id, world_id)
 
-    def store_record(self, user_id: int, achievements: Iterable[str], devours: Iterable[Devour]):
-        """Combines achievements and devours with the account's. A devour is counted once however many browsers
-        report it."""
+    def store_record(self, user_id: int, achievements: Iterable[str], devours: Iterable[Devour], names: Iterable[str]):
+        """Combines achievements, devours and names devoured as with the account's. A devour is counted once
+        however many browsers report it."""
         with self._write() as db:
             current = self._record(db, user_id)
             merged_achievements = sorted(set(current["achievements"]) | set(achievements))
             merged_devours = sorted(set(current["devours"]) | set(devours))
-            if merged_achievements == current["achievements"] and merged_devours == current["devours"]:
-                return
-            db.execute(
-                """INSERT INTO records (user_id, achievements, devours) VALUES (?, ?, ?)
-                   ON CONFLICT (user_id) DO UPDATE SET achievements = excluded.achievements,
-                   devours = excluded.devours""",
-                (user_id, json.dumps(merged_achievements), json.dumps(merged_devours)),
-            )
+            if merged_achievements != current["achievements"] or merged_devours != current["devours"]:
+                db.execute(
+                    """INSERT INTO records (user_id, achievements, devours) VALUES (?, ?, ?)
+                       ON CONFLICT (user_id) DO UPDATE SET achievements = excluded.achievements,
+                       devours = excluded.devours""",
+                    (user_id, json.dumps(merged_achievements), json.dumps(merged_devours)),
+                )
+            db.executemany("INSERT INTO devoured_as (user_id, name) VALUES (?, ?)",
+                           [(user_id, name) for name in set(names) - set(current["names"])])
+
+    def record(self, user_id: int) -> Dict:
+        with self._db() as db:
+            return self._record(db, user_id)
 
     @staticmethod
     def _record(db, user_id: int) -> Dict:
         record = db.execute("SELECT achievements, devours FROM records WHERE user_id = ?", (user_id,)).fetchone()
+        names = db.execute("SELECT name FROM devoured_as WHERE user_id = ?", (user_id,)).fetchall()
         return {
             "achievements": sorted(json.loads(record[0])) if record else [],
             "devours": sorted(tuple(devour) for devour in json.loads(record[1])) if record else [],
+            "names": sorted(name for name, in names),
         }
 
     def load(self, user_id: int) -> Dict:

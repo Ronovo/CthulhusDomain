@@ -4,26 +4,43 @@
     font-display: swap;
 }
 
-/* Styles: one per Great Old One, chosen with the style picker. Cthulhu is the default. */
+@font-face {
+    font-family: "Cinzel";
+    src: url("../fonts/Cinzel.ttf") format("truetype");
+    font-weight: 400 900;
+    font-display: swap;
+}
+
+/* Styles: one per Great Old One, chosen with the style picker. Cthulhu is the default.
+   --glow lights up anything affordable or earned, --edge is the highlight along the top of every surface. */
 
 :root {
-    --bg: #000;
-    --surface: #000;
-    --text: #fff;
-    --title: #800080;
-    --title-shadow: none;
-    --accent: #0f0;
-    --good: #0f0;
-    --bad: #f00;
-    --btn-end: #000;
-    --muted: #646464;
-    --border: #fff;
-    --panel: #000032;
-    --res: linear-gradient(rgb(40, 20, 60), rgb(60, 30, 90));
-    --locked: linear-gradient(rgb(40, 20, 30), rgb(60, 30, 45));
-    --locked-ok: linear-gradient(rgb(20, 40, 30), rgb(30, 60, 45));
-    --bar: linear-gradient(rgb(0, 200, 0), rgb(0, 255, 0));
-    --bar-glow: rgba(0, 255, 0, 0.3);
+    --display: "Cinzel", "Crimson Text", Georgia, serif;
+    --vignette: radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 45%, rgba(0, 0, 0, 0.6) 100%);
+    --shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+    --edge: rgba(255, 255, 255, 0.08);
+}
+
+/* Sunken R'lyeh: green-black depths, a violet dreamer, sea-glow */
+:root {
+    --bg: radial-gradient(ellipse at top, #0b2a22 0%, #04120e 55%, #020806 100%);
+    --surface: #06110d;
+    --text: #e3f1ea;
+    --title: #b48ae6;
+    --title-shadow: 0 0 16px rgba(180, 138, 230, 0.45);
+    --accent: #4fe39a;
+    --good: #1f7a4a;
+    --bad: #8f2a33;
+    --btn-end: #03110c;
+    --muted: #5f7a6e;
+    --border: #6fae8f;
+    --panel: linear-gradient(#0a2a24, #061a16);
+    --res: linear-gradient(#0d3330, #124a44);
+    --locked: linear-gradient(#0a1a16, #10241f);
+    --locked-ok: linear-gradient(#0f3a2a, #175a40);
+    --bar: linear-gradient(#1fb870, #6dffb5);
+    --bar-glow: rgba(79, 227, 154, 0.4);
+    --glow: rgba(79, 227, 154, 0.4);
 }
 
 /* The Black Pharaoh: tomb gold and lapis */
@@ -38,18 +55,22 @@
     --bad: #9e2222;
     --btn-end: #2a2114;
     --muted: #7d6f50;
-    --border: #e0b84a;
+    --border: #f0c75a;
     --panel: linear-gradient(#142650, #0b1730);
     --res: linear-gradient(#3a2d14, #54401a);
     --locked: linear-gradient(#2a2115, #362b1c);
     --locked-ok: linear-gradient(#15284f, #1d3870);
     --bar: linear-gradient(#c9961a, #ffd54f);
     --bar-glow: rgba(255, 213, 79, 0.4);
+    --glow: rgba(107, 155, 255, 0.45);
+    --edge: rgba(240, 199, 90, 0.18);
 }
 
-/* The Gate and the Key: deep space with drifting nebulae */
+/* The Gate and the Key: deep space with drifting nebulae and a field of faint stars */
 :root[data-style="yog-sothoth"] {
-    --bg: radial-gradient(circle at 20% 10%, #2a1050 0%, transparent 40%),
+    --bg: radial-gradient(circle, rgba(255, 255, 255, 0.4) 0.7px, transparent 1.4px) 0 0 / 97px 97px,
+        radial-gradient(circle, rgba(255, 255, 255, 0.25) 0.6px, transparent 1.2px) 31px 47px / 61px 61px,
+        radial-gradient(circle at 20% 10%, #2a1050 0%, transparent 40%),
         radial-gradient(circle at 85% 80%, #08324a 0%, transparent 45%), #0d0820;
     --surface: #150e30;
     --text: #e9e4ff;
@@ -67,6 +88,7 @@
     --locked-ok: linear-gradient(#0a2430, #0f3644);
     --bar: linear-gradient(90deg, #4dd0e1, #b388ff, #ff80ab);
     --bar-glow: rgba(179, 136, 255, 0.45);
+    --glow: rgba(77, 208, 225, 0.45);
 }
 
 /* The Black Goat of the Woods: moss and old blood */
@@ -88,15 +110,17 @@
     --locked-ok: linear-gradient(#22401e, #30602a);
     --bar: linear-gradient(#7cb342, #c5e1a5);
     --bar-glow: rgba(197, 225, 165, 0.35);
+    --glow: rgba(197, 225, 165, 0.35);
 }
 
 /* The King in Yellow: a yellow haze over faded ochre */
 :root[data-style="hastur"] {
-    --bg: radial-gradient(ellipse at top, #3a3213 0%, #1c190f 60%);
+    --bg: linear-gradient(rgba(255, 224, 102, 0.09), transparent 35%),
+        radial-gradient(ellipse at top, #3a3213 0%, #1c190f 60%);
     --surface: #221e12;
     --text: #f7efd2;
     --title: #ffd23f;
-    --title-shadow: 0 0 16px rgba(255, 210, 63, 0.4);
+    --title-shadow: 0 0 18px rgba(255, 210, 63, 0.5);
     --accent: #ffe066;
     --good: #c9a227;
     --bad: #a12a2a;
@@ -109,9 +133,11 @@
     --locked-ok: linear-gradient(#4a3f16, #6a5a1e);
     --bar: linear-gradient(#d4a72c, #ffe680);
     --bar-glow: rgba(255, 224, 102, 0.4);
+    --glow: rgba(255, 224, 102, 0.5);
+    --edge: rgba(255, 224, 102, 0.14);
 }
 
-/* The deep: sea blue, teal glow, coral */
+/* The deep: sea blue, teal glow, coral, with light rippling across the panel */
 :root[data-style="dagon"] {
     --bg: linear-gradient(#0a2a38, #04141c 80%);
     --surface: #082430;
@@ -124,12 +150,14 @@
     --btn-end: #04161e;
     --muted: #4a6c73;
     --border: #6fd0dc;
-    --panel: linear-gradient(#0a3444, #062330);
+    --panel: repeating-linear-gradient(-35deg, rgba(100, 255, 218, 0.04) 0 14px, transparent 14px 28px),
+        linear-gradient(#0a3444, #062330);
     --res: linear-gradient(#0a4152, #106277);
     --locked: linear-gradient(#0c1d24, #112830);
     --locked-ok: linear-gradient(#0a4a45, #0f6560);
     --bar: linear-gradient(#1de9b6, #64ffda);
     --bar-glow: rgba(100, 255, 218, 0.35);
+    --glow: rgba(100, 255, 218, 0.4);
 }
 
 /* The Father of Serpents: desert copper and turquoise, with scaled resources */
@@ -151,9 +179,10 @@
     --locked-ok: linear-gradient(#123832, #1a524a);
     --bar: linear-gradient(#26a69a, #64e0d0);
     --bar-glow: rgba(64, 201, 184, 0.35);
+    --glow: rgba(79, 216, 198, 0.4);
 }
 
-/* The sleeper of N'kai: slate, bone and bronze */
+/* The sleeper of N'kai: slate, bone and bronze, cut from grained stone */
 :root[data-style="tsathoggua"] {
     --bg: #1b1a18;
     --surface: #22211e;
@@ -166,12 +195,14 @@
     --btn-end: #151412;
     --muted: #7d776b;
     --border: #b0a890;
-    --panel: #2a2824;
-    --res: linear-gradient(#34312b, #454036);
+    --panel: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.02) 0 2px, transparent 2px 5px), #2a2824;
+    --res: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0 2px, transparent 2px 5px),
+        linear-gradient(#34312b, #454036);
     --locked: linear-gradient(#201f1c, #282623);
     --locked-ok: linear-gradient(#3a3122, #4d402a);
     --bar: linear-gradient(#b8893c, #f0c879);
     --bar-glow: rgba(240, 200, 121, 0.35);
+    --glow: rgba(224, 181, 110, 0.4);
 }
 
 /* The volcano of Mu: lava glow over ash, and whatever its gaze turned to stone */
@@ -193,10 +224,12 @@
     --locked-ok: linear-gradient(#4a200a, #6a300e);
     --bar: linear-gradient(#ff3d00, #ffb460);
     --bar-glow: rgba(255, 109, 0, 0.45);
+    --glow: rgba(255, 180, 96, 0.45);
 }
 
 /* Layout standards: labels sit left, numbers sit right with fixed-width digits so they line up
-   down a column. Spacing comes in steps of 8 / 12 / 16 / 24. */
+   down a column. Spacing comes in steps of 8 / 12 / 16 / 24. Headings use the display font,
+   everything else Crimson Text. */
 
 * {
     box-sizing: border-box;
@@ -209,7 +242,7 @@ html {
 body {
     margin: 0;
     min-height: 100vh;
-    background: var(--bg);
+    background: var(--vignette), var(--bg);
     background-attachment: fixed;
     color: var(--text);
     font-family: "Crimson Text", Georgia, serif;
@@ -230,17 +263,105 @@ p {
 }
 
 select {
-    padding: 4px 8px;
+    padding: 6px 10px;
     background: var(--surface);
     color: var(--text);
     border: 1px solid var(--border);
+    border-radius: 2px;
+    box-shadow: inset 0 1px 0 var(--edge);
     font: inherit;
     font-size: 18px;
+}
+
+select:focus-visible {
+    outline: 1px solid var(--accent);
+    outline-offset: 1px;
+    box-shadow: 0 0 10px var(--glow);
 }
 
 .number {
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
+}
+
+/* Surfaces share one depth: a highlight along the top edge and a soft shadow below */
+.resource,
+.manager,
+.upgrade-button,
+.upgrades,
+.achievement,
+.modal-box,
+.toast,
+.stats-table {
+    border-radius: 2px;
+    box-shadow: inset 0 1px 0 var(--edge), var(--shadow);
+}
+
+.resource,
+.manager,
+.upgrade-button,
+.small-button,
+.filter-button,
+.delete-button,
+.menu-button,
+.toast-close {
+    transition: color 0.15s, border-color 0.15s, filter 0.12s, transform 0.08s, box-shadow 0.15s;
+}
+
+.resource:hover,
+.manager:hover,
+.upgrade-button:hover {
+    filter: brightness(1.12);
+}
+
+.resource:active,
+.manager:active,
+.upgrade-button:active {
+    transform: translateY(1px);
+}
+
+/* A sheen across the top of every raised button */
+.resource.unlocked::before,
+.manager::before,
+.upgrade-button::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(rgba(255, 255, 255, 0.07), transparent 45%);
+    pointer-events: none;
+}
+
+/* An ornament: a thin rule fading out at both ends, broken by a diamond in the middle */
+.title,
+.game-header {
+    position: relative;
+    padding-bottom: 20px;
+}
+
+.title::after,
+.game-header::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    width: min(100%, 360px);
+    height: 1px;
+    transform: translateX(-50%);
+    background: linear-gradient(90deg, transparent, var(--border) 30%, transparent 46%,
+        transparent 54%, var(--border) 70%, transparent);
+}
+
+.title::before,
+.game-header::before {
+    content: "◆";
+    position: absolute;
+    left: 50%;
+    bottom: -8px;
+    transform: translateX(-50%);
+    color: var(--accent);
+    font-size: 12px;
+    line-height: 1;
+    text-shadow: 0 0 8px var(--glow);
 }
 
 .style-bar {
@@ -251,6 +372,10 @@ select {
     height: 40px;
     padding: 8px 16px 0;
     font-size: 18px;
+}
+
+.home-button {
+    margin-right: auto;
 }
 
 /* Menus */
@@ -269,8 +394,10 @@ select {
 .title {
     color: var(--title);
     text-shadow: var(--title-shadow);
-    font-size: 48px;
-    font-weight: normal;
+    font-family: var(--display);
+    font-size: 44px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
     margin: 0 0 32px;
 }
 
@@ -284,18 +411,27 @@ select {
 .menu-button {
     background: none;
     border: none;
-    font-size: 48px;
-    padding: 4px 16px;
+    font-family: var(--display);
+    font-size: 36px;
+    letter-spacing: 0.08em;
+    padding: 6px 24px;
 }
 
 .menu-button:hover,
 .menu-button:focus-visible {
     color: var(--accent);
+    text-shadow: 0 0 12px var(--glow);
     outline: none;
 }
 
 .menu-text {
-    font-size: 48px;
+    font-size: 40px;
+}
+
+.menu-note {
+    max-width: 640px;
+    color: var(--muted);
+    font-size: 18px;
 }
 
 .save-row {
@@ -311,6 +447,7 @@ select {
     padding: 4px 12px;
     background: none;
     border: 1px solid var(--muted);
+    border-radius: 2px;
     color: var(--muted);
     font-size: 20px;
 }
@@ -328,15 +465,17 @@ select {
     border-bottom: 1px solid var(--border);
     color: var(--text);
     font: inherit;
-    font-size: 48px;
+    font-size: 44px;
     text-align: center;
     width: min(100%, 12em);
     margin-bottom: 16px;
+    transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 .name-input:focus {
     outline: none;
     border-bottom-color: var(--accent);
+    box-shadow: 0 8px 12px -10px var(--glow);
 }
 
 .difficulty-field {
@@ -354,6 +493,82 @@ select {
     max-width: 100%;
 }
 
+.mode-field {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    width: min(100%, 640px);
+    margin-bottom: 16px;
+    font-size: 22px;
+}
+
+.mode-options {
+    display: flex;
+    gap: 12px;
+    width: 100%;
+}
+
+.mode-option {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    display: flex;
+}
+
+.mode-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+}
+
+.mode-card {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    width: 100%;
+    padding: 12px 16px;
+    background: var(--locked);
+    border: 1px solid var(--muted);
+    border-radius: 2px;
+    box-shadow: inset 0 1px 0 var(--edge), var(--shadow);
+    color: var(--muted);
+    text-align: left;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+
+.mode-card:hover {
+    border-color: var(--accent);
+}
+
+.mode-input:checked + .mode-card {
+    background: var(--locked-ok);
+    border-color: var(--accent);
+    color: var(--text);
+    box-shadow: inset 0 1px 0 var(--edge), 0 0 14px var(--glow), var(--shadow);
+}
+
+.mode-input:focus-visible + .mode-card {
+    outline: 1px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.mode-name {
+    font-family: var(--display);
+    font-size: 20px;
+    letter-spacing: 0.06em;
+}
+
+.mode-input:checked + .mode-card .mode-name {
+    color: var(--accent);
+}
+
+.mode-reason {
+    font-size: 17px;
+}
+
 .error {
     color: var(--bad);
     font-size: 32px;
@@ -363,9 +578,9 @@ select {
 /* Game */
 
 .game {
-    /* Rows shrink to fit the window, between 48px and 56px. 224px is everything on the game
+    /* Rows shrink to fit the window, between 48px and 56px. 280px is everything on the game
        screen that isn't a resource row: style bar, header, footer, padding and the gaps between rows. */
-    --row-height: clamp(48px, calc((100vh - 224px) / 10), 56px);
+    --row-height: clamp(48px, calc((100vh - 280px) / 10), 56px);
     max-width: 1320px;
     margin: 0 auto;
     padding: 8px 16px 8px;
@@ -376,21 +591,43 @@ select {
     grid-template-columns: 1fr auto 1fr;
     align-items: center;
     gap: 16px;
-    margin-bottom: 8px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
 }
 
 .player-name {
     justify-self: start;
     color: var(--title);
     text-shadow: var(--title-shadow);
-    font-size: 32px;
+    font-family: var(--display);
+    font-size: 28px;
     font-weight: normal;
+    letter-spacing: 0.04em;
     margin: 0;
     padding: 0;
 }
 
 .sanity {
-    font-size: 32px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    line-height: 1;
+}
+
+.sanity-label {
+    font-family: var(--display);
+    font-size: 20px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--accent);
+}
+
+.sanity-value {
+    font-family: var(--display);
+    font-size: 40px;
+    font-weight: 700;
+    color: var(--text);
+    text-shadow: 0 0 6px var(--glow), 0 0 18px var(--glow), 0 2px 2px rgba(0, 0, 0, 0.8);
 }
 
 .board {
@@ -422,7 +659,6 @@ select {
     height: var(--row-height);
     padding: 0 16px;
     border: 1px solid var(--border);
-    box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.4);
     overflow: hidden;
     white-space: nowrap;
     text-align: left;
@@ -442,15 +678,21 @@ select {
 }
 
 .resource.locked {
-    background: var(--locked);
+    background: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.025) 0 6px, transparent 6px 12px), var(--locked);
     border-color: var(--muted);
     color: var(--muted);
 }
 
 .resource.locked.affordable {
-    background: var(--locked-ok);
+    background: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.025) 0 6px, transparent 6px 12px), var(--locked-ok);
     border-color: var(--accent);
     color: var(--accent);
+}
+
+.resource.locked.affordable,
+.manager.affordable,
+.upgrade-button.affordable {
+    box-shadow: inset 0 1px 0 var(--edge), 0 0 12px var(--glow), var(--shadow);
 }
 
 .progress {
@@ -463,6 +705,7 @@ select {
 }
 
 .progress-fill {
+    position: relative;
     display: block;
     width: 100%;
     height: 100%;
@@ -470,6 +713,17 @@ select {
     transform-origin: left;
     background: var(--bar);
     box-shadow: 0 0 6px var(--bar-glow);
+    overflow: hidden;
+}
+
+/* A light passing along the bar while it fills */
+.progress-fill::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.35) 50%, transparent 100%);
+    background-size: 200% 100%;
+    animation: sheen 2.4s linear infinite;
 }
 
 @keyframes fill-bar {
@@ -479,6 +733,16 @@ select {
 
     to {
         transform: scaleX(1);
+    }
+}
+
+@keyframes sheen {
+    from {
+        background-position: 200% 0;
+    }
+
+    to {
+        background-position: -200% 0;
     }
 }
 
@@ -505,15 +769,16 @@ select {
     flex-direction: column;
     height: calc(var(--row-height) * 10 + 8px * 9);
     background: var(--panel);
-    border: 2px solid var(--border);
-    box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.4);
+    border: 1px solid var(--border);
 }
 
 .upgrades h2 {
-    font-size: 32px;
+    font-family: var(--display);
+    font-size: 26px;
     font-weight: normal;
+    letter-spacing: 0.1em;
     text-align: center;
-    margin: 8px 0 12px;
+    margin: 12px 0 12px;
 }
 
 .upgrade-filters {
@@ -531,12 +796,27 @@ select {
     flex: 1;
     overflow-y: auto;
     padding: 0 12px 12px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--muted) transparent;
+}
+
+.upgrade-list::-webkit-scrollbar {
+    width: 8px;
+}
+
+.upgrade-list::-webkit-scrollbar-thumb {
+    background: var(--muted);
+    border-radius: 4px;
 }
 
 .upgrade-group h3 {
-    font-size: 24px;
+    font-family: var(--display);
+    font-size: 18px;
     font-weight: normal;
+    letter-spacing: 0.1em;
+    color: var(--muted);
     margin: 12px 0 8px;
+    padding-bottom: 4px;
     border-bottom: 1px solid var(--muted);
 }
 
@@ -547,6 +827,7 @@ select {
 }
 
 .upgrade-button {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 2px;
@@ -559,6 +840,7 @@ select {
 
 .upgrade-button.affordable {
     background: linear-gradient(var(--good), var(--btn-end));
+    border-color: var(--border);
 }
 
 .upgrade-button.unaffordable {
@@ -567,7 +849,7 @@ select {
 
 [data-pressed] {
     filter: brightness(1.35);
-    box-shadow: inset 0 0 0 2px var(--accent);
+    box-shadow: inset 0 0 0 2px var(--accent), var(--shadow);
 }
 
 .upgrade-top {
@@ -627,6 +909,7 @@ select {
     padding: 2px 12px;
     background: none;
     border: 1px solid var(--accent);
+    border-radius: 2px;
     color: var(--accent);
     font-size: 20px;
 }
@@ -636,6 +919,7 @@ select {
     background: linear-gradient(var(--good), var(--btn-end));
     color: var(--text);
     text-shadow: 0 0 3px #000;
+    box-shadow: 0 0 10px var(--glow);
     outline: none;
 }
 
@@ -649,6 +933,7 @@ select {
     max-width: 640px;
     padding: 12px 16px;
     border: 2px solid var(--bad);
+    border-radius: 2px;
     font-size: 20px;
 }
 
@@ -662,17 +947,13 @@ select {
     font: inherit;
     font-size: 32px;
     text-align: center;
+    transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 .login-input:focus {
     outline: none;
     border-bottom-color: var(--accent);
-}
-
-.login-note {
-    max-width: 640px;
-    color: var(--muted);
-    font-size: 18px;
+    box-shadow: 0 8px 12px -10px var(--glow);
 }
 
 /* Ending */
@@ -689,11 +970,86 @@ select {
 
 /* Achievements */
 
+.achievement-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    width: min(100%, 720px);
+}
+
+.filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+}
+
+.filter-button {
+    padding: 4px 14px;
+    background: none;
+    border: 1px solid var(--muted);
+    border-radius: 2px;
+    color: var(--muted);
+    font-size: 18px;
+}
+
+.filter-button:hover,
+.filter-button:focus-visible {
+    border-color: var(--accent);
+    color: var(--accent);
+    outline: none;
+}
+
+.filter-button[aria-pressed="true"] {
+    background: linear-gradient(var(--good), var(--btn-end));
+    border-color: var(--accent);
+    color: var(--text);
+    text-shadow: 0 0 3px #000;
+    box-shadow: 0 0 10px var(--glow);
+}
+
+.achievement-groups {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    width: min(100%, 720px);
+}
+
+.achievement-group {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.group-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 16px;
+    margin: 0;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--muted);
+    font-family: var(--display);
+    font-size: 22px;
+    font-weight: normal;
+    letter-spacing: 0.08em;
+    text-align: left;
+}
+
+.group-count {
+    color: var(--muted);
+    font-family: "Crimson Text", Georgia, serif;
+    font-size: 20px;
+    letter-spacing: 0;
+}
+
 .achievement-list {
     display: flex;
     flex-direction: column;
     gap: 12px;
-    width: min(100%, 640px);
+    width: 100%;
     margin: 0;
     padding: 0;
     list-style: none;
@@ -702,8 +1058,8 @@ select {
 
 .achievement {
     display: flex;
-    flex-direction: column;
-    gap: 2px;
+    align-items: center;
+    gap: 16px;
     padding: 12px 16px;
     background: var(--locked);
     border: 1px solid var(--muted);
@@ -714,6 +1070,43 @@ select {
     background: var(--locked-ok);
     border-color: var(--accent);
     color: var(--text);
+    box-shadow: inset 0 1px 0 var(--edge), 0 0 14px var(--glow), var(--shadow);
+}
+
+.medal {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border: 1px solid currentColor;
+    border-radius: 50%;
+    font-size: 20px;
+    line-height: 1;
+}
+
+.medal::before {
+    content: "◇";
+}
+
+.achievement.earned .medal,
+.toast .medal {
+    color: var(--accent);
+    border-color: var(--accent);
+    box-shadow: 0 0 10px var(--glow), inset 0 0 8px var(--glow);
+}
+
+.achievement.earned .medal::before,
+.toast .medal::before {
+    content: "✦";
+}
+
+.achievement-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
 }
 
 .achievement-name {
@@ -741,15 +1134,24 @@ select {
 
 .toast {
     position: relative;
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    column-gap: 16px;
+    align-items: center;
     max-width: calc(100vw - 32px);
-    padding: 24px 64px 24px 32px;
+    padding: 20px 56px 20px 24px;
     background: var(--surface);
-    border: 4px solid var(--accent);
-    box-shadow: 0 0 24px var(--bar-glow);
+    border: 2px solid var(--accent);
+    box-shadow: inset 0 1px 0 var(--edge), 0 0 24px var(--glow), var(--shadow);
     animation: toast-in 0.3s ease-out;
     pointer-events: auto;
+}
+
+.toast .medal {
+    grid-row: 1 / 3;
+    width: 52px;
+    height: 52px;
+    font-size: 24px;
 }
 
 .toast-close {
@@ -772,11 +1174,14 @@ select {
 
 .toast-title {
     color: var(--accent);
-    font-size: 32px;
+    font-family: var(--display);
+    font-size: 16px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
 }
 
 .toast-name {
-    font-size: 44px;
+    font-size: 36px;
 }
 
 @keyframes toast-in {
@@ -791,6 +1196,45 @@ select {
     }
 }
 
+/* Statistics */
+
+.stats-table {
+    width: min(100%, 640px);
+    border-collapse: separate;
+    border-spacing: 0;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    font-size: 22px;
+}
+
+.stats-table th,
+.stats-table td {
+    padding: 10px 16px;
+    text-align: left;
+    font-weight: normal;
+}
+
+.stats-table th:not(:first-child),
+.stats-table td {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.stats-table thead th {
+    font-family: var(--display);
+    font-size: 15px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    border-bottom: 1px solid var(--muted);
+}
+
+.stats-table tfoot th,
+.stats-table tfoot td {
+    border-top: 1px solid var(--border);
+    color: var(--accent);
+}
+
 /* Popups */
 
 .modal {
@@ -801,7 +1245,7 @@ select {
     align-items: center;
     justify-content: center;
     padding: 16px;
-    background: rgba(0, 0, 0, 0.5);
+    background: rgba(0, 0, 0, 0.6);
 }
 
 .modal-box {
@@ -813,9 +1257,32 @@ select {
     max-width: 600px;
     padding: 24px;
     background: var(--surface);
-    border: 2px solid var(--border);
+    border: 1px solid var(--border);
     text-align: center;
     font-size: 28px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .progress-fill::after {
+        animation: none;
+    }
+
+    .toast {
+        animation: none;
+    }
+
+    .resource,
+    .manager,
+    .upgrade-button,
+    .small-button,
+    .filter-button,
+    .delete-button,
+    .menu-button,
+    .toast-close,
+    .name-input,
+    .login-input {
+        transition: none;
+    }
 }
 
 @media (max-width: 1100px) {
@@ -841,9 +1308,12 @@ select {
     }
 
     .resource-name,
-    .player-name,
-    .sanity {
+    .player-name {
         font-size: 24px;
+    }
+
+    .sanity-value {
+        font-size: 32px;
     }
 
     .manager {
@@ -851,9 +1321,29 @@ select {
     }
 
     .title,
-    .menu-button,
     .menu-text,
     .name-input {
-        font-size: 36px;
+        font-size: 32px;
+    }
+
+    .menu-button {
+        font-size: 28px;
+    }
+
+    .mode-options {
+        flex-direction: column;
+    }
+
+    .toast-name {
+        font-size: 28px;
+    }
+
+    .stats-table {
+        font-size: 18px;
+    }
+
+    .stats-table th,
+    .stats-table td {
+        padding: 8px 10px;
     }
 }
